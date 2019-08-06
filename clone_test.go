@@ -137,13 +137,13 @@ func deepEqual(t *testing.T, expected, actual interface{}) {
 
 func TestCloneArray(t *testing.T) {
 	arr := [2]*T{
-		&T{
+		{
 			Foo: 123,
 			Bar: map[string]interface{}{
 				"abc": 123,
 			},
 		},
-		&T{
+		{
 			Foo: 456,
 			Bar: map[string]interface{}{
 				"def": 456,
@@ -162,13 +162,13 @@ func TestCloneArray(t *testing.T) {
 
 func TestCloneMap(t *testing.T) {
 	m := map[string]*T{
-		"abc": &T{
+		"abc": {
 			Foo: 123,
 			Bar: map[string]interface{}{
 				"abc": 321,
 			},
 		},
-		"def": &T{
+		"def": {
 			Foo: 456,
 			Bar: map[string]interface{}{
 				"def": 789,
@@ -198,13 +198,13 @@ func BenchmarkSimpleClone(b *testing.B) {
 
 func BenchmarkComplexClone(b *testing.B) {
 	m := map[string]*T{
-		"abc": &T{
+		"abc": {
 			Foo: 123,
 			Bar: map[string]interface{}{
 				"abc": 321,
 			},
 		},
-		"def": &T{
+		"def": {
 			Foo: 456,
 			Bar: map[string]interface{}{
 				"def": 789,
