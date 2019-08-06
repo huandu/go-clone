@@ -102,7 +102,7 @@ func cloneMap(v reflect.Value, visited visitMap) reflect.Value {
 	}
 
 	nv := reflect.MakeMap(t)
-	iter := v.MapRange()
+	iter := mapIter(v)
 
 	if visited != nil {
 		visit := visit{

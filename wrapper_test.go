@@ -60,6 +60,23 @@ func TestWrap(t *testing.T) {
 	}
 }
 
+func TestWrapScalaPtr(t *testing.T) {
+	i := 123
+	c := &i
+
+	v := Wrap(c).(*int)
+
+	if *v != *c {
+		t.Fatalf("c and v must be the same value. [c:%#v] [v:%#v]", c, v)
+	}
+
+	orig := Unwrap(v).(*int)
+
+	if orig != c {
+		t.Fatalf("fail to get original value. [expected:%p] [actual:%p]", c, orig)
+	}
+}
+
 func TestWrapNonePtr(t *testing.T) {
 	cases := []interface{}{
 		123, nil, "abcd", []string{"ghi"}, map[string]int{"xyz": 123},
