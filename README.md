@@ -32,7 +32,7 @@ If we need to clone such values, use `Slowly` instead.
 
 ### `Wrap`, `Unwrap` and `Undo` ###
 
-Package `clone` provides a `Wrap`/`Unwrap` pair to protect a pointer value from any unexpected mutation.
+Package `clone` provides `Wrap`/`Unwrap` functions to protect a pointer value from any unexpected mutation.
 It's useful when we want to protect a variable which should be immutable by design,
 e.g. global config, the value stored in context, the value sent to a chan, etc.
 
@@ -85,7 +85,7 @@ BenchmarkComplexWrap-12     	 1000000	      1298 ns/op	     656 B/op	      12 al
 
 ## Similar packages ##
 
-* Package [encoding/gob](https://golang.org/pkg/encoding/gob/): God encoder/decoder can be used to clone Go data. However, it's extremely slow.
+* Package [encoding/gob](https://golang.org/pkg/encoding/gob/): Gob encoder/decoder can be used to clone Go data. However, it's extremely slow.
 * Package [github.com/jinzhu/copier](https://github.com/jinzhu/copier): Copy data by field name. It doesn't work with values containing recursive pointers.
 * Package [github.com/ulule/deepcopier](https://github.com/ulule/deepcopier): Another copier.
 
