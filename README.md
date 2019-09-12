@@ -30,6 +30,33 @@ reflect.DeepEqual(t, v) // true
 For the sake of performance, `Clone` doesn't deal with values containing recursive pointers.
 If we need to clone such values, use `Slowly` instead.
 
+```go
+type ListNode struct {
+    Data int
+    Next *ListNode
+}
+node1 := &ListNode{
+    Data: 1,
+}
+node2 := &ListNode{
+    Data: 2,
+}
+node3 := &ListNode{
+    Data: 3,
+}
+node1.Next = node2
+node2.Next = node3
+node3.Next = node1
+
+// We must use `Slowly` to clone a circular linked list.
+node := Slowly(node1).(*ListNode)
+
+for i := 0; i < 10; i++ {
+    fmt.Println(node.Data)
+    node = node.Next
+}
+```
+
 ### `Wrap`, `Unwrap` and `Undo` ###
 
 Package `clone` provides `Wrap`/`Unwrap` functions to protect a pointer value from any unexpected mutation.

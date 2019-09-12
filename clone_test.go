@@ -5,6 +5,7 @@ package clone
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"reflect"
 	"testing"
@@ -53,11 +54,13 @@ func TestClone(t *testing.T) {
 		var nested []map[string][]*T
 		var nestedPtr *T
 		var nestedIf interface{}
+		var nestedMap map[string]interface{}
 		nested = []map[string][]*T{
 			{
 				"abc": {
 					{Foo: 987, Bar: map[string]interface{}{"def": nil, "nil": nil}},
 					{Foo: 321, Bar: map[string]interface{}{"ghi": nil, "def": nil, "cba": nil}},
+					{Foo: 456},
 					nil,
 				},
 			},
@@ -72,11 +75,18 @@ func TestClone(t *testing.T) {
 		nestedIf = map[string]interface{}{
 			"rst": nested,
 		}
+		nestedMap = map[string]interface{}{}
+
+		// Don't test it due to bug in Go.
+		// https://github.com/golang/go/issues/33907
+		//nestedMap["opq"] = nestedMap
+
 		nested[0]["abc"][0].Bar["def"] = nested
 		nested[0]["abc"][1].Bar["ghi"] = nestedPtr
 		nested[0]["abc"][1].Bar["def"] = nestedIf
 		nested[0]["abc"][1].Bar["cba"] = nested
-		nested[0]["abc"][2] = nestedPtr
+		nested[0]["abc"][2].Bar = nestedMap
+		nested[0]["abc"][3] = nestedPtr
 		nestedPtr.Bar["opq"] = nestedPtr
 		return nested
 	}()
@@ -120,18 +130,19 @@ func deepEqual(t *testing.T, expected, actual interface{}) {
 	}
 
 	if val.Kind() == reflect.Func {
-		// It's not possible to compare chan value either.
+		// It's not possible to compare func value either.
 		cval := reflect.ValueOf(expected)
 
 		if cval.Type() != val.Type() {
-			t.Fatalf("fail to clone func. [expected:%#v] [actual:%#v]", expected, actual)
+			t.Fatalf("fail to clone func. [expected:%v] [actual:%v]", cval, val)
 		}
 
 		return
 	}
 
 	if !reflect.DeepEqual(actual, expected) {
-		t.Fatalf("fail to clone. [expected:%T %#v] [actual:%T %#v]", expected, expected, actual, actual)
+		t.Fatalf("fail to clone. [expected:%T] [actual:%T]\nexpect: %#v\nactual: %#v",
+			expected, actual, expected, actual)
 	}
 }
 
@@ -182,6 +193,45 @@ func TestCloneMap(t *testing.T) {
 	if m["abc"].Foo != 123 || m["def"].Bar["def"] != 789 {
 		t.Fatalf("fail to do deep clone. [orig:%#v] [cloned:%#v]", m, cloned)
 	}
+}
+
+func ExampleSlowly() {
+	type ListNode struct {
+		Data int
+		Next *ListNode
+	}
+	node1 := &ListNode{
+		Data: 1,
+	}
+	node2 := &ListNode{
+		Data: 2,
+	}
+	node3 := &ListNode{
+		Data: 3,
+	}
+	node1.Next = node2
+	node2.Next = node3
+	node3.Next = node1
+
+	// We must use `Slowly` to clone a circular linked list.
+	node := Slowly(node1).(*ListNode)
+
+	for i := 0; i < 10; i++ {
+		fmt.Println(node.Data)
+		node = node.Next
+	}
+
+	// Output:
+	// 1
+	// 2
+	// 3
+	// 1
+	// 2
+	// 3
+	// 1
+	// 2
+	// 3
+	// 1
 }
 
 func BenchmarkSimpleClone(b *testing.B) {

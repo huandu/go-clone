@@ -36,8 +36,9 @@ func Slowly(v interface{}) interface{} {
 }
 
 type visit struct {
-	p uintptr
-	t reflect.Type
+	p     uintptr
+	extra int
+	t     reflect.Type
 }
 
 type visitMap map[visit]reflect.Value
@@ -79,8 +80,7 @@ func cloneInterface(v reflect.Value, visited visitMap) reflect.Value {
 	}
 
 	t := v.Type()
-	nv := clone(v.Elem(), visited)
-	return nv.Convert(t)
+	return clone(v.Elem(), visited).Convert(t)
 }
 
 func cloneMap(v reflect.Value, visited visitMap) reflect.Value {
@@ -102,7 +102,6 @@ func cloneMap(v reflect.Value, visited visitMap) reflect.Value {
 	}
 
 	nv := reflect.MakeMap(t)
-	iter := mapIter(v)
 
 	if visited != nil {
 		visit := visit{
@@ -112,7 +111,7 @@ func cloneMap(v reflect.Value, visited visitMap) reflect.Value {
 		visited[visit] = nv
 	}
 
-	for iter.Next() {
+	for iter := mapIter(v); iter.Next(); {
 		nv.SetMapIndex(clone(iter.Key(), visited), clone(iter.Value(), visited))
 	}
 
@@ -124,9 +123,7 @@ func clonePtr(v reflect.Value, visited visitMap) reflect.Value {
 		return v
 	}
 
-	t := v.Type()
-
-	if visited != nil {
+	if t := v.Type(); visited != nil {
 		visit := visit{
 			p: v.Pointer(),
 			t: t,
@@ -135,19 +132,14 @@ func clonePtr(v reflect.Value, visited visitMap) reflect.Value {
 		if val, ok := visited[visit]; ok {
 			return val
 		}
-	}
 
-	nv := clone(v.Elem(), visited).Addr()
-
-	if visited != nil {
-		visit := visit{
-			p: v.Pointer(),
-			t: t,
-		}
+		nv := reflect.New(t.Elem())
 		visited[visit] = nv
+		nv.Elem().Set(clone(v.Elem(), visited))
+		return nv
 	}
 
-	return nv
+	return clone(v.Elem(), visited).Addr()
 }
 
 func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
@@ -156,11 +148,13 @@ func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
 	}
 
 	t := v.Type()
+	num := v.Len()
 
 	if visited != nil {
 		visit := visit{
-			p: v.Pointer(),
-			t: t,
+			p:     v.Pointer(),
+			extra: num,
+			t:     t,
 		}
 
 		if val, ok := visited[visit]; ok {
@@ -168,13 +162,13 @@ func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
 		}
 	}
 
-	num := v.Len()
 	nv := reflect.MakeSlice(t, num, v.Cap())
 
 	if visited != nil {
 		visit := visit{
-			p: v.Pointer(),
-			t: t,
+			p:     v.Pointer(),
+			extra: num,
+			t:     t,
 		}
 		visited[visit] = nv
 	}
