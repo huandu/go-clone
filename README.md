@@ -30,7 +30,7 @@ v := clone.Clone(t).(*T)
 reflect.DeepEqual(t, v) // true
 ```
 
-For the sake of performance, `Clone` doesn't deal with values containing recursive pointers.
+For the sake of performance, `Clone` doesn't deal with values containing pointer cycles.
 If we need to clone such values, use `Slowly` instead.
 
 ```go
@@ -76,7 +76,7 @@ Currently, following types are marked as scala by default.
 If there is any type defined in built-in package should be considered as scala, please open new issue to let me know.
 I will update the default.
 
-If there is any custom type should be considered as scala, call `MarkAsScala` to mark it manually.
+If there is any custom type should be considered as scala, call `MarkAsScala` to mark it manually. See [MarkAsSala sample code](https://godoc.org/github.com/huandu/go-clone#example-MarkAsScala) for more details.
 
 ### `Wrap`, `Unwrap` and `Undo` ###
 
@@ -136,7 +136,7 @@ BenchmarkComplexWrap-12     	  956605	      1193 ns/op	     688 B/op	      13 al
 ## Similar packages ##
 
 * Package [encoding/gob](https://golang.org/pkg/encoding/gob/): Gob encoder/decoder can be used to clone Go data. However, it's extremely slow.
-* Package [github.com/jinzhu/copier](https://github.com/jinzhu/copier): Copy data by field name. It doesn't work with values containing recursive pointers.
+* Package [github.com/jinzhu/copier](https://github.com/jinzhu/copier): Copy data by field name. It doesn't work with values containing pointer cycles.
 * Package [github.com/ulule/deepcopier](https://github.com/ulule/deepcopier): Another copier.
 
 ## License ##

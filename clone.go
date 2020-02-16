@@ -46,7 +46,7 @@ import (
 //     // and handle panic in defer.
 //     t.fn = bytes.NewBufferString("foo").Len
 //     cloned = Clone(t).(*T)
-//     print(cloned == nil) // false
+//     print(cloned.fn == nil) // false
 //     cloned.fn()          // panic
 //
 func Clone(v interface{}) interface{} {
