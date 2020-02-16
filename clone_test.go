@@ -5,10 +5,12 @@ package clone
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"reflect"
 	"testing"
+	"unsafe"
+
+	"github.com/huandu/go-assert"
 )
 
 type T struct {
@@ -116,37 +118,31 @@ func TestClone(t *testing.T) {
 }
 
 func deepEqual(t *testing.T, expected, actual interface{}) {
+	a := assert.New(t)
+	a.Use(&expected, &actual)
+
 	val := reflect.ValueOf(actual)
 
 	// It's not possible to compare chan value.
 	if val.Kind() == reflect.Chan {
 		cval := reflect.ValueOf(expected)
-
-		if cval.Type() != val.Type() || cval.Cap() != val.Cap() {
-			t.Fatalf("fail to clone chan. [expected:%#v] [actual:%#v]", expected, actual)
-		}
-
+		a.Equal(cval.Type(), val.Type())
+		a.Equal(cval.Cap(), val.Cap())
 		return
 	}
 
 	if val.Kind() == reflect.Func {
 		// It's not possible to compare func value either.
 		cval := reflect.ValueOf(expected)
-
-		if cval.Type() != val.Type() {
-			t.Fatalf("fail to clone func. [expected:%v] [actual:%v]", cval, val)
-		}
-
+		a.Assert(cval.Type() == val.Type())
 		return
 	}
 
-	if !reflect.DeepEqual(actual, expected) {
-		t.Fatalf("fail to clone. [expected:%T] [actual:%T]\nexpect: %#v\nactual: %#v",
-			expected, actual, expected, actual)
-	}
+	a.Equal(actual, expected)
 }
 
 func TestCloneArray(t *testing.T) {
+	a := assert.New(t)
 	arr := [2]*T{
 		{
 			Foo: 123,
@@ -163,15 +159,19 @@ func TestCloneArray(t *testing.T) {
 		},
 	}
 	cloned := Clone(arr).([2]*T)
+	a.Use(&arr, &cloned)
+
+	a.Equal(arr, cloned)
+
+	// arr is not changed if cloned is mutated.
 	cloned[0].Foo = 987
 	cloned[1].Bar["ghi"] = 321
-
-	if arr[0].Foo != 123 || arr[1].Bar["ghi"] != 789 {
-		t.Fatalf("fail to do deep clone. [orig:%#v %#v] [cloned:%#v %#v]", arr[0], arr[1], cloned[0], cloned[1])
-	}
+	a.Equal(arr[0].Foo, 123)
+	a.Equal(arr[1].Bar["ghi"], 789)
 }
 
 func TestCloneMap(t *testing.T) {
+	a := assert.New(t)
 	m := map[string]*T{
 		"abc": {
 			Foo: 123,
@@ -187,83 +187,152 @@ func TestCloneMap(t *testing.T) {
 		},
 	}
 	cloned := Clone(m).(map[string]*T)
+	a.Use(&m, &cloned)
+
+	a.Equal(m, cloned)
+
+	// m is not changed if cloned is mutated.
 	cloned["abc"].Foo = 321
 	cloned["def"].Bar["def"] = 987
-
-	if m["abc"].Foo != 123 || m["def"].Bar["def"] != 789 {
-		t.Fatalf("fail to do deep clone. [orig:%#v] [cloned:%#v]", m, cloned)
-	}
+	a.Equal(m["abc"].Foo, 123)
+	a.Equal(m["def"].Bar["def"], 789)
 }
 
-func ExampleSlowly() {
-	type ListNode struct {
-		Data int
-		Next *ListNode
-	}
-	node1 := &ListNode{
-		Data: 1,
-	}
-	node2 := &ListNode{
-		Data: 2,
-	}
-	node3 := &ListNode{
-		Data: 3,
-	}
-	node1.Next = node2
-	node2.Next = node3
-	node3.Next = node1
+func TestCloneBytesBuffer(t *testing.T) {
+	a := assert.New(t)
+	buf := &bytes.Buffer{}
+	buf.WriteString("Hello, world!")
+	dummy := make([]byte, len("Hello, "))
+	buf.Read(dummy)
+	cloned := Clone(buf).(*bytes.Buffer)
+	a.Use(&buf, &cloned)
 
-	// We must use `Slowly` to clone a circular linked list.
-	node := Slowly(node1).(*ListNode)
+	// Data must be cloned.
+	a.Equal(buf.Len(), cloned.Len())
+	a.Equal(buf.String(), cloned.String())
 
-	for i := 0; i < 10; i++ {
-		fmt.Println(node.Data)
-		node = node.Next
-	}
+	// Data must not share the same address.
+	from := buf.Bytes()
+	to := cloned.Bytes()
+	a.Assert(&from[0] != &to[0])
 
-	// Output:
-	// 1
-	// 2
-	// 3
-	// 1
-	// 2
-	// 3
-	// 1
-	// 2
-	// 3
-	// 1
+	buf.WriteString("!!!!!")
+	a.NotEqual(buf.Len(), cloned.Len())
+	a.NotEqual(buf.String(), cloned.String())
 }
 
-func BenchmarkSimpleClone(b *testing.B) {
-	orig := &testSimple{
-		Foo: 123,
-		Bar: "abcd",
-	}
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		Clone(orig)
-	}
+type Simple struct {
+	Foo int
+	Bar string
 }
 
-func BenchmarkComplexClone(b *testing.B) {
-	m := map[string]*T{
-		"abc": {
-			Foo: 123,
-			Bar: map[string]interface{}{
-				"abc": 321,
+type Unexported struct {
+	insider
+}
+
+type insider struct {
+	i             int
+	i8            int8
+	i16           int16
+	i32           int32
+	i64           int64
+	u             uint
+	u8            uint8
+	u16           uint16
+	u32           uint32
+	u64           uint64
+	uptr          uintptr
+	b             bool
+	s             string
+	f32           float32
+	f64           float64
+	c64           complex64
+	c128          complex128
+	arr           [4]string
+	ch            chan bool
+	fn            func(s string) string
+	method        func([]byte) (int, error)
+	iface         io.Writer
+	m             map[string]string
+	ptr           *Unexported
+	slice         []*Unexported
+	st            Simple
+	unsafePointer unsafe.Pointer
+
+	Simple
+}
+
+func TestCloneUnexportedFields(t *testing.T) {
+	a := assert.New(t)
+	unexported := &Unexported{
+		insider: insider{
+			i:    -1,
+			i8:   -8,
+			i16:  -16,
+			i32:  -32,
+			i64:  -64,
+			u:    1,
+			u8:   8,
+			u16:  16,
+			u32:  32,
+			u64:  64,
+			uptr: uintptr(0xDEADC0DE),
+			b:    true,
+			s:    "hello",
+			f32:  3.2,
+			f64:  6.4,
+			c64:  complex(6, 4),
+			c128: complex(12, 8),
+			arr: [4]string{
+				"a", "b", "c", "d",
+			},
+			ch: make(chan bool, 5),
+			fn: func(s string) string {
+				return s + ", world!"
+			},
+			method: reflect.ValueOf(bytes.NewBufferString("method")).MethodByName("Write").Interface().(func([]byte) (int, error)),
+			iface:  bytes.NewBufferString("interface"),
+			m: map[string]string{
+				"key": "value",
+			},
+			unsafePointer: unsafe.Pointer(&Unexported{}),
+			st: Simple{
+				Foo: 123,
+				Bar: "bar1",
+			},
+			Simple: Simple{
+				Foo: 456,
+				Bar: "bar2",
 			},
 		},
-		"def": {
-			Foo: 456,
-			Bar: map[string]interface{}{
-				"def": 789,
-			},
-		},
 	}
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		Clone(m)
-	}
+	// Make pointer cycles.
+	unexported.ptr = unexported
+	unexported.slice = []*Unexported{unexported}
+	cloned := Slowly(unexported).(*Unexported)
+	a.Use(&unexported, &cloned)
+
+	// unsafe.Pointer is shadow copied.
+	a.Assert(cloned.unsafePointer == unexported.unsafePointer)
+	unexported.unsafePointer = nil
+	cloned.unsafePointer = nil
+
+	// chan cannot be compared, but its buffer can be verified.
+	a.Equal(cap(cloned.ch), cap(unexported.ch))
+	unexported.ch = nil
+	cloned.ch = nil
+
+	// fn cannot be compared, but it can be called.
+	a.Equal(cloned.fn("Hello"), unexported.fn("Hello"))
+	unexported.fn = nil
+	cloned.fn = nil
+
+	// method cannot be cloned.
+	//a.Assert(cloned.method == nil)
+	a.Assert(cloned.method == nil)
+	unexported.method = nil
+
+	// Finally, everything else should equal.
+	a.Equal(unexported, cloned)
 }

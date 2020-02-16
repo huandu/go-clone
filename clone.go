@@ -6,12 +6,49 @@
 package clone
 
 import (
+	"fmt"
+	"math"
 	"reflect"
+	"unsafe"
 )
 
 // Clone recursively deep clone v to a new value.
-// It assumes that there is no recursive pointers in v,
+// It assumes that there is no pointer cycle in v,
 // e.g. v has a pointer points to v itself.
+// If there is a pointer cycle, use Slowly instead.
+//
+// Clone cannot clone some special values due to Go's limitation.
+// Here is the list of special values.
+//
+//     * chan: New empty chan is made without any data.
+//     * func: Copied by value as func is immutable at runtime.
+//     * unsafe.Pointer: Copied by pointer value as we don't know what's in it.
+//
+// Clone is able to clone unexported fields in a struct.
+// It works fine in the most cases.
+// The only known exception is the unexported method value.
+// Following code shows the case.
+//
+//     type T struct {
+//         fn func() int // fn is an unexported field.
+//     }
+//
+//     t := &T{}
+//     t.fn = func() int { return 123 }
+//
+//     // Clone can work fine with closure or func pointer.
+//     cloned := Clone(t).(*T)
+//     println(cloned.fn()) // 123
+//
+//     // However, Clone will clone an invalid fn pointer in this case.
+//     // AFAIK, there is no way to fix it.
+//     // Maybe the best way is to manually wrap cloned.fn in a func
+//     // and handle panic in defer.
+//     t.fn = bytes.NewBufferString("foo").Len
+//     cloned = Clone(t).(*T)
+//     print(cloned == nil) // false
+//     cloned.fn()          // panic
+//
 func Clone(v interface{}) interface{} {
 	if v == nil {
 		return v
@@ -23,8 +60,9 @@ func Clone(v interface{}) interface{} {
 }
 
 // Slowly recursively deep clone v to a new value.
-// It marks all cloned values internally, thus it can clone
-// recursive pointers in v.
+// It marks all cloned values internally, thus it can clone v with cycle pointer.
+//
+// Slowly works exactly the same as Clone. See Clone doc for more details.
 func Slowly(v interface{}) interface{} {
 	if v == nil {
 		return v
@@ -44,9 +82,19 @@ type visit struct {
 type visitMap map[visit]reflect.Value
 
 func clone(v reflect.Value, visited visitMap) reflect.Value {
+	if !v.IsValid() {
+		return reflect.Value{}
+	}
+
+	if isScala(v.Kind()) {
+		return copyScalaValue(v)
+	}
+
 	switch v.Kind() {
 	case reflect.Array:
 		return cloneArray(v, visited)
+	case reflect.Chan:
+		return reflect.MakeChan(v.Type(), v.Cap())
 	case reflect.Interface:
 		return cloneInterface(v, visited)
 	case reflect.Map:
@@ -58,7 +106,7 @@ func clone(v reflect.Value, visited visitMap) reflect.Value {
 	case reflect.Struct:
 		return cloneStruct(v, visited)
 	default:
-		return v
+		panic(fmt.Errorf("go-clone: <bug> unsupported type `%v`", v.Type()))
 	}
 }
 
@@ -76,7 +124,7 @@ func cloneArray(v reflect.Value, visited visitMap) reflect.Value {
 
 func cloneInterface(v reflect.Value, visited visitMap) reflect.Value {
 	if v.IsNil() {
-		return v
+		return reflect.Zero(v.Type())
 	}
 
 	t := v.Type()
@@ -85,7 +133,7 @@ func cloneInterface(v reflect.Value, visited visitMap) reflect.Value {
 
 func cloneMap(v reflect.Value, visited visitMap) reflect.Value {
 	if v.IsNil() {
-		return v
+		return reflect.Zero(v.Type())
 	}
 
 	t := v.Type()
@@ -120,10 +168,12 @@ func cloneMap(v reflect.Value, visited visitMap) reflect.Value {
 
 func clonePtr(v reflect.Value, visited visitMap) reflect.Value {
 	if v.IsNil() {
-		return v
+		return reflect.Zero(v.Type())
 	}
 
-	if t := v.Type(); visited != nil {
+	t := v.Type()
+
+	if visited != nil {
 		visit := visit{
 			p: v.Pointer(),
 			t: t,
@@ -132,19 +182,25 @@ func clonePtr(v reflect.Value, visited visitMap) reflect.Value {
 		if val, ok := visited[visit]; ok {
 			return val
 		}
-
-		nv := reflect.New(t.Elem())
-		visited[visit] = nv
-		nv.Elem().Set(clone(v.Elem(), visited))
-		return nv
 	}
 
-	return clone(v.Elem(), visited).Addr()
+	nv := reflect.New(t.Elem())
+
+	if visited != nil {
+		visit := visit{
+			p: v.Pointer(),
+			t: t,
+		}
+		visited[visit] = nv
+	}
+
+	nv.Elem().Set(clone(v.Elem(), visited))
+	return nv
 }
 
 func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
 	if v.IsNil() {
-		return v
+		return reflect.Zero(v.Type())
 	}
 
 	t := v.Type()
@@ -162,7 +218,8 @@ func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
 		}
 	}
 
-	nv := reflect.MakeSlice(t, num, v.Cap())
+	c := v.Cap()
+	nv := reflect.MakeSlice(t, num, c)
 
 	if visited != nil {
 		visit := visit{
@@ -173,8 +230,18 @@ func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
 		visited[visit] = nv
 	}
 
-	for i := 0; i < num; i++ {
-		nv.Index(i).Set(clone(v.Index(i), visited))
+	// For scala slice, copy underlying values directly.
+	if isScala(t.Elem().Kind()) {
+		src := unsafe.Pointer(v.Pointer())
+		dst := unsafe.Pointer(nv.Pointer())
+		sz := int(t.Elem().Size())
+		l := num * sz
+		cc := c * sz
+		copy((*[math.MaxInt32]byte)(dst)[:l:cc], (*[math.MaxInt32]byte)(src)[:l:cc])
+	} else {
+		for i := 0; i < num; i++ {
+			nv.Index(i).Set(clone(v.Index(i), visited))
+		}
 	}
 
 	return nv
@@ -182,21 +249,152 @@ func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
 
 func cloneStruct(v reflect.Value, visited visitMap) reflect.Value {
 	t := v.Type()
-	nv := reflect.New(t).Elem()
+	nv := reflect.New(t)
 	copyStruct(v, nv, visited)
-	return nv
+	return nv.Elem()
 }
 
 func copyStruct(src, dst reflect.Value, visited visitMap) {
-	num := src.NumField()
+	ptr := unsafe.Pointer(dst.Pointer()) // dst must be a Ptr.
+	dst = dst.Elem()
+	st := loadStructType(dst.Type())
 
-	for i := 0; i < num; i++ {
-		field := dst.Field(i)
+	// If src is an unexported field value. it's not possible to copy src by value.
+	// Copy field value one by one.
+	if !dst.CanSet() || !src.CanInterface() {
+		t := src.Type()
+		num := t.NumField()
 
-		if !field.CanSet() {
-			continue
+		for i := 0; i < num; i++ {
+			field := t.Field(i)
+			p := unsafe.Pointer(uintptr(ptr) + field.Offset)
+			copyStructField(src.Field(i), dst.Field(i), p, visited)
 		}
 
-		field.Set(clone(src.Field(i), visited))
+		return
+	}
+
+	dst.Set(src)
+
+	// If the struct type is a scala type, a.k.a type without any pointer,
+	// there is no need to iterate over fields.
+	if len(st.PointerFields) == 0 {
+		return
+	}
+
+	for _, pf := range st.PointerFields {
+		i := int(pf.Index)
+		p := unsafe.Pointer(uintptr(ptr) + pf.Offset)
+		copyStructField(src.Field(i), dst.Field(i), p, visited)
+	}
+}
+
+func copyStructField(src, dst reflect.Value, p unsafe.Pointer, visited visitMap) {
+	v := clone(src, visited)
+
+	// dst is a public field.
+	if dst.CanSet() && v.CanInterface() {
+		dst.Set(v)
+		return
+	}
+
+	shadowCopy(v, p)
+}
+
+func shadowCopy(src reflect.Value, p unsafe.Pointer) {
+	switch src.Kind() {
+	case reflect.Bool:
+		*(*bool)(p) = src.Bool()
+	case reflect.Int:
+		*(*int)(p) = int(src.Int())
+	case reflect.Int8:
+		*(*int8)(p) = int8(src.Int())
+	case reflect.Int16:
+		*(*int16)(p) = int16(src.Int())
+	case reflect.Int32:
+		*(*int32)(p) = int32(src.Int())
+	case reflect.Int64:
+		*(*int64)(p) = src.Int()
+	case reflect.Uint:
+		*(*uint)(p) = uint(src.Uint())
+	case reflect.Uint8:
+		*(*uint8)(p) = uint8(src.Uint())
+	case reflect.Uint16:
+		*(*uint16)(p) = uint16(src.Uint())
+	case reflect.Uint32:
+		*(*uint32)(p) = uint32(src.Uint())
+	case reflect.Uint64:
+		*(*uint64)(p) = src.Uint()
+	case reflect.Uintptr:
+		*(*uintptr)(p) = uintptr(src.Uint())
+	case reflect.Float32:
+		*(*float32)(p) = float32(src.Float())
+	case reflect.Float64:
+		*(*float64)(p) = src.Float()
+	case reflect.Complex64:
+		*(*complex64)(p) = complex64(src.Complex())
+	case reflect.Complex128:
+		*(*complex128)(p) = src.Complex()
+
+	case reflect.Array:
+		t := src.Type()
+		val := reflect.NewAt(t, p).Elem()
+
+		if src.CanInterface() {
+			val.Set(src)
+			return
+		}
+
+		sz := t.Elem().Size()
+		num := src.Len()
+
+		for i := 0; i < num; i++ {
+			elemPtr := unsafe.Pointer(uintptr(p) + uintptr(i)*sz)
+			shadowCopy(src.Index(i), elemPtr)
+		}
+	case reflect.Chan:
+		*((*uintptr)(p)) = src.Pointer()
+	case reflect.Func:
+		t := src.Type()
+		src = copyScalaValue(src)
+		val := reflect.NewAt(t, p).Elem()
+		val.Set(src)
+	case reflect.Interface:
+		*((*[2]uintptr)(p)) = src.InterfaceData()
+	case reflect.Map:
+		*((*uintptr)(p)) = src.Pointer()
+	case reflect.Ptr:
+		*((*uintptr)(p)) = src.Pointer()
+	case reflect.Slice:
+		*(*reflect.SliceHeader)(p) = reflect.SliceHeader{
+			Data: src.Pointer(),
+			Len:  src.Len(),
+			Cap:  src.Cap(),
+		}
+	case reflect.String:
+		s := src.String()
+		*(*reflect.StringHeader)(p) = *(*reflect.StringHeader)(unsafe.Pointer(&s))
+	case reflect.Struct:
+		t := src.Type()
+		val := reflect.NewAt(t, p).Elem()
+
+		if src.CanInterface() {
+			val.Set(src)
+			return
+		}
+
+		num := t.NumField()
+
+		for i := 0; i < num; i++ {
+			field := t.Field(i)
+			fieldPtr := unsafe.Pointer(uintptr(p) + field.Offset)
+			shadowCopy(src.Field(i), fieldPtr)
+		}
+	case reflect.UnsafePointer:
+		// There is no way to copy unsafe.Pointer value.
+		*((*uintptr)(p)) = src.Pointer()
+
+	default:
+		panic(fmt.Errorf("go-clone: <bug> impossible type `%v` when cloning private field", src.Type()))
 	}
 }

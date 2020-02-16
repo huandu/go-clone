@@ -9,6 +9,9 @@
 Package `clone` provides functions to deep clone any Go data.
 It also provides a wrapper to protect a pointer from any unexpected mutation.
 
+`Clone`/`Slowly` can clone all unexported fields in a struct. Please use it wisely.
+See document of [`Clone`](https://godoc.org/github.com/huandu/go-clone#Clone) for details.
+
 ## Install ##
 
 Use `go get` to install this package.
@@ -57,6 +60,24 @@ for i := 0; i < 10; i++ {
 }
 ```
 
+### Mark struct type as scala ###
+
+Some struct types can be considered as scala.
+
+A well-known case is `time.Time`.
+Although there is a pointer `loc *time.Location` inside `time.Time`, we always use `time.Time` by value in all methods.
+When cloning `time.Time`, it should be OK to return a shadow copy.
+
+Currently, following types are marked as scala by default.
+
+* `time.Time`
+* `reflect.Value`
+
+If there is any type defined in built-in package should be considered as scala, please open new issue to let me know.
+I will update the default.
+
+If there is any custom type should be considered as scala, call `MarkAsScala` to mark it manually.
+
 ### `Wrap`, `Unwrap` and `Undo` ###
 
 Package `clone` provides `Wrap`/`Unwrap` functions to protect a pointer value from any unexpected mutation.
@@ -100,14 +121,16 @@ Here is the performance data running on my MacBook Pro.
 MacBook Pro (15-inch, 2019)
 Processor: 2.6 GHz Intel Core i7
 
+go 1.13.7
 goos: darwin
 goarch: amd64
 pkg: github.com/huandu/go-clone
-BenchmarkSimpleClone-12     	10000000	       147 ns/op	      32 B/op	       1 allocs/op
-BenchmarkComplexClone-12    	 1000000	      1823 ns/op	    1376 B/op	      19 allocs/op
-BenchmarkUnwrap-12          	20000000	        96.9 ns/op	       0 B/op	       0 allocs/op
-BenchmarkSimpleWrap-12      	 5000000	       289 ns/op	      48 B/op	       1 allocs/op
-BenchmarkComplexWrap-12     	 1000000	      1298 ns/op	     656 B/op	      12 allocs/op
+
+BenchmarkSimpleClone-12     	 6127873	       189 ns/op	      64 B/op	       2 allocs/op
+BenchmarkComplexClone-12    	  602491	      1995 ns/op	    1504 B/op	      24 allocs/op
+BenchmarkUnwrap-12          	13317367	        89.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSimpleWrap-12      	 4890932	       249 ns/op	      48 B/op	       1 allocs/op
+BenchmarkComplexWrap-12     	  956605	      1193 ns/op	     688 B/op	      13 allocs/op
 ```
 
 ## Similar packages ##

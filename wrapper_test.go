@@ -4,9 +4,9 @@
 package clone
 
 import (
-	"fmt"
-	"reflect"
 	"testing"
+
+	"github.com/huandu/go-assert"
 )
 
 type testType struct {
@@ -21,9 +21,8 @@ type testSimple struct {
 }
 
 func TestWrap(t *testing.T) {
-	if Wrap(nil) != nil {
-		t.Fatalf("nil should not be wrapped.")
-	}
+	a := assert.New(t)
+	a.Equal(Wrap(nil), nil)
 
 	orig := &testType{
 		Foo: "abcd",
@@ -36,62 +35,49 @@ func TestWrap(t *testing.T) {
 		},
 	}
 	wrapped := Wrap(orig).(*testType)
+	a.Use(&orig, &wrapped)
 
-	if !reflect.DeepEqual(orig, wrapped) {
-		t.Fatalf("orig and wrapped must be the same value. [orig:%#v] [wrapped:%#v]", orig, wrapped)
-	}
-
-	if again := Wrap(wrapped); !reflect.DeepEqual(again, wrapped) {
-		t.Fatalf("again and wrapped must be the same value. [again:%#v] [wrapped:%#v]", again, wrapped)
-	}
+	a.Equal(orig, wrapped)
+	a.Equal(Wrap(wrapped), wrapped)
 
 	wrapped.Foo = "xyz"
 	wrapped.Bar["ghi"] = 98.7
 	wrapped.Player[1] = 65.4
 
-	if orig.Foo != "abcd" || orig.Bar["ghi"] != 78.9 || orig.Player[1] != 45.6 {
-		t.Fatalf("original value should be untouched. [orig:%#v]", orig)
-	}
+	a.Equal(orig.Foo, "abcd")
+	a.Equal(orig.Bar["ghi"], 78.9)
+	a.Equal(orig.Player[1], 45.6)
 
 	actual := Unwrap(wrapped).(*testType)
-
-	if orig != actual {
-		t.Fatalf("fail to get original value. [expected:%#v] [actual:%#v]", orig, actual)
-	}
+	a.Assert(orig == actual)
 }
 
 func TestWrapScalaPtr(t *testing.T) {
+	a := assert.New(t)
 	i := 123
 	c := &i
-
 	v := Wrap(c).(*int)
-
-	if *v != *c {
-		t.Fatalf("c and v must be the same value. [c:%#v] [v:%#v]", c, v)
-	}
-
 	orig := Unwrap(v).(*int)
+	a.Use(&a, &i, &c, &v)
 
-	if orig != c {
-		t.Fatalf("fail to get original value. [expected:%p] [actual:%p]", c, orig)
-	}
+	a.Assert(*v == *c)
+	a.Assert(orig == c)
 }
 
 func TestWrapNonePtr(t *testing.T) {
+	a := assert.New(t)
 	cases := []interface{}{
 		123, nil, "abcd", []string{"ghi"}, map[string]int{"xyz": 123},
 	}
 
 	for _, c := range cases {
 		v := Wrap(c)
-
-		if !reflect.DeepEqual(c, v) {
-			t.Fatalf("c and v must be the same value. [c:%#v] [v:%#v]", c, v)
-		}
+		a.Equal(c, v)
 	}
 }
 
 func TestUnwrapValueWhichIsNotWrapped(t *testing.T) {
+	a := assert.New(t)
 	s := &testType{
 		Foo: "abcd",
 		Bar: map[string]interface{}{
@@ -105,12 +91,11 @@ func TestUnwrapValueWhichIsNotWrapped(t *testing.T) {
 	v := Unwrap(s).(*testType)
 	v.Foo = "xyz"
 
-	if !reflect.DeepEqual(s, v) {
-		t.Fatalf("origin should return old value. [expected:%v] [actual:%#v]", s, v)
-	}
+	a.Equal(s, v)
 }
 
 func TestUnwrapPlainValueWhichIsNotWrapped(t *testing.T) {
+	a := assert.New(t)
 	i := 0
 	cases := []interface{}{
 		123, "abc", nil, &i,
@@ -119,39 +104,17 @@ func TestUnwrapPlainValueWhichIsNotWrapped(t *testing.T) {
 	for _, c := range cases {
 		v := Unwrap(c)
 
-		if !reflect.DeepEqual(c, v) {
-			t.Fatalf("origin should return old value. [expected:%#v] [actual:%#v]", c, v)
-		}
+		a.Equal(c, v)
 
 		old := c
 		Undo(c)
 
-		if !reflect.DeepEqual(c, old) {
-			t.Fatalf("undo should return old value. [expected:%#v] [actual:%#v]", c, old)
-		}
-	}
-}
-
-func BenchmarkUnwrap(b *testing.B) {
-	orig := &testType{
-		Foo: "abcd",
-		Bar: map[string]interface{}{
-			"def": 123,
-			"ghi": 78.9,
-		},
-		Player: []float64{
-			12.3, 45.6, -78.9,
-		},
-	}
-	wrapped := Wrap(orig)
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		Unwrap(wrapped)
+		a.Equal(c, old)
 	}
 }
 
 func TestUndo(t *testing.T) {
+	a := assert.New(t)
 	orig := &testType{
 		Foo: "abcd",
 		Bar: map[string]interface{}{
@@ -163,83 +126,16 @@ func TestUndo(t *testing.T) {
 		},
 	}
 	wrapped := Wrap(orig).(*testType)
+	a.Use(&orig, &wrapped)
+
 	wrapped.Foo = "xyz"
 	wrapped.Bar["ghi"] = 98.7
 	wrapped.Player[1] = 65.4
 
-	if orig.Foo != "abcd" || orig.Bar["ghi"] != 78.9 || orig.Player[1] != 45.6 {
-		t.Fatalf("original value should be untouched. [orig:%#v]", orig)
-	}
+	a.Equal(orig.Foo, "abcd")
+	a.Equal(orig.Bar["ghi"], 78.9)
+	a.Equal(orig.Player[1], 45.6)
 
 	Undo(wrapped)
-
-	if !reflect.DeepEqual(orig, wrapped) {
-		t.Fatalf("fail to get original value. [expected:%#v] [actual:%#v]", orig, wrapped)
-	}
-}
-
-func BenchmarkSimpleWrap(b *testing.B) {
-	orig := &testSimple{
-		Foo: 123,
-		Bar: "abcd",
-	}
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		Wrap(orig)
-	}
-}
-
-func BenchmarkComplexWrap(b *testing.B) {
-	orig := &testType{
-		Foo: "abcd",
-		Bar: map[string]interface{}{
-			"def": 123,
-			"ghi": 78.9,
-		},
-		Player: []float64{
-			12.3, 45.6, -78.9,
-		},
-	}
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		Wrap(orig)
-	}
-}
-
-func ExampleWrap() {
-	// Suppose we have a type T defined as following.
-	//     type T struct {
-	//         Foo int
-	//     }
-	v := &T{
-		Foo: 123,
-	}
-	w := Wrap(v).(*T) // Wrap value to protect it.
-
-	// Use w freely. The type of w is the same as that of v.
-
-	// It's OK to modify w. The change will not affect v.
-	w.Foo = 456
-	fmt.Println(w.Foo) // 456
-	fmt.Println(v.Foo) // 123
-
-	// Once we need the original value stored in w, call `Unwrap`.
-	orig := Unwrap(w).(*T)
-	fmt.Println(orig == v) // true
-	fmt.Println(orig.Foo)  // 123
-
-	// Or, we can simply undo any change made in w.
-	// Note that `Undo` is significantly slower than `Unwrap`, thus
-	// the latter is always preferred.
-	Undo(w)
-	fmt.Println(w.Foo) // 123
-
-	// Output:
-	// 456
-	// 123
-	// true
-	// 123
-	// 123
+	a.Equal(orig, wrapped)
 }

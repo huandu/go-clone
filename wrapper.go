@@ -80,7 +80,7 @@ func Wrap(v interface{}) interface{} {
 
 	if t.Kind() == reflect.Struct {
 		// Avoid 1 alloc.
-		copyStruct(elem, field, nil)
+		copyStruct(elem, field.Addr(), nil)
 	} else {
 		field.Set(clone(elem, nil))
 	}
