@@ -111,15 +111,24 @@ func clone(v reflect.Value, visited visitMap) reflect.Value {
 }
 
 func cloneArray(v reflect.Value, visited visitMap) reflect.Value {
-	t := v.Type()
-	num := v.Len()
-	nv := reflect.New(t).Elem()
+	dst := reflect.New(v.Type())
+	copyArray(v, dst, visited)
+	return dst.Elem()
+}
 
-	for i := 0; i < num; i++ {
-		nv.Index(i).Set(clone(v.Index(i), visited))
+func copyArray(src, dst reflect.Value, visited visitMap) {
+	p := unsafe.Pointer(dst.Pointer()) // dst must be a Ptr.
+	dst = dst.Elem()
+	num := src.Len()
+
+	if isScala(src.Type().Elem().Kind()) {
+		shadowCopy(src, p)
+		return
 	}
 
-	return nv
+	for i := 0; i < num; i++ {
+		dst.Index(i).Set(clone(src.Index(i), visited))
+	}
 }
 
 func cloneInterface(v reflect.Value, visited visitMap) reflect.Value {
@@ -184,7 +193,8 @@ func clonePtr(v reflect.Value, visited visitMap) reflect.Value {
 		}
 	}
 
-	nv := reflect.New(t.Elem())
+	elemType := t.Elem()
+	nv := reflect.New(elemType)
 
 	if visited != nil {
 		visit := visit{
@@ -194,7 +204,23 @@ func clonePtr(v reflect.Value, visited visitMap) reflect.Value {
 		visited[visit] = nv
 	}
 
-	nv.Elem().Set(clone(v.Elem(), visited))
+	p := unsafe.Pointer(nv.Pointer())
+	src := v.Elem()
+
+	if isScala(elemType.Kind()) {
+		shadowCopy(src, p)
+		return nv
+	}
+
+	switch elemType.Kind() {
+	case reflect.Struct:
+		copyStruct(src, nv, visited)
+	case reflect.Array:
+		copyArray(src, nv, visited)
+	default:
+		nv.Elem().Set(clone(src, visited))
+	}
+
 	return nv
 }
 

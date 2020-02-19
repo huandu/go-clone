@@ -126,11 +126,11 @@ goos: darwin
 goarch: amd64
 pkg: github.com/huandu/go-clone
 
-BenchmarkSimpleClone-12     	 6127873	       189 ns/op	      64 B/op	       2 allocs/op
-BenchmarkComplexClone-12    	  602491	      1995 ns/op	    1504 B/op	      24 allocs/op
-BenchmarkUnwrap-12          	13317367	        89.2 ns/op	       0 B/op	       0 allocs/op
-BenchmarkSimpleWrap-12      	 4890932	       249 ns/op	      48 B/op	       1 allocs/op
-BenchmarkComplexWrap-12     	  956605	      1193 ns/op	     688 B/op	      13 allocs/op
+BenchmarkSimpleClone-12     	 8747481	       127 ns/op	      32 B/op	       1 allocs/op
+BenchmarkComplexClone-12    	  650032	      1912 ns/op	    1472 B/op	      22 allocs/op
+BenchmarkUnwrap-12          	13105429	        90.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSimpleWrap-12      	 4625512	       267 ns/op	      48 B/op	       1 allocs/op
+BenchmarkComplexWrap-12     	 1000000	      1219 ns/op	     688 B/op	      13 allocs/op
 ```
 
 ## Similar packages ##
