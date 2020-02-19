@@ -9,8 +9,7 @@
 Package `clone` provides functions to deep clone any Go data.
 It also provides a wrapper to protect a pointer from any unexpected mutation.
 
-`Clone`/`Slowly` can clone all unexported fields in a struct. Please use it wisely.
-See document of [`Clone`](https://godoc.org/github.com/huandu/go-clone#Clone) for details.
+`Clone`/`Slowly` can clone unexported fields of any struct. Use this feature wisely.
 
 ## Install ##
 
@@ -126,11 +125,11 @@ goos: darwin
 goarch: amd64
 pkg: github.com/huandu/go-clone
 
-BenchmarkSimpleClone-12     	 8747481	       127 ns/op	      32 B/op	       1 allocs/op
-BenchmarkComplexClone-12    	  650032	      1912 ns/op	    1472 B/op	      22 allocs/op
-BenchmarkUnwrap-12          	13105429	        90.3 ns/op	       0 B/op	       0 allocs/op
-BenchmarkSimpleWrap-12      	 4625512	       267 ns/op	      48 B/op	       1 allocs/op
-BenchmarkComplexWrap-12     	 1000000	      1219 ns/op	     688 B/op	      13 allocs/op
+BenchmarkSimpleClone-12     	10254127	       108 ns/op	      32 B/op	       1 allocs/op
+BenchmarkComplexClone-12    	  667335	      1831 ns/op	    1472 B/op	      22 allocs/op
+BenchmarkUnwrap-12          	13315618	        91.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSimpleWrap-12      	 5119616	       238 ns/op	      48 B/op	       1 allocs/op
+BenchmarkComplexWrap-12     	 1000000	      1158 ns/op	     688 B/op	      13 allocs/op
 ```
 
 ## Similar packages ##

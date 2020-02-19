@@ -249,12 +249,15 @@ type insider struct {
 	c64           complex64
 	c128          complex128
 	arr           [4]string
+	arrPtr        *[10]byte
 	ch            chan bool
 	fn            func(s string) string
 	method        func([]byte) (int, error)
 	iface         io.Writer
-	m             map[string]string
+	nilIface      interface{}
+	m             map[string]interface{}
 	ptr           *Unexported
+	nilPtr        *Unexported
 	slice         []*Unexported
 	st            Simple
 	unsafePointer unsafe.Pointer
@@ -286,13 +289,14 @@ func TestCloneUnexportedFields(t *testing.T) {
 			arr: [4]string{
 				"a", "b", "c", "d",
 			},
-			ch: make(chan bool, 5),
+			arrPtr: &[10]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+			ch:     make(chan bool, 5),
 			fn: func(s string) string {
 				return s + ", world!"
 			},
-			method: reflect.ValueOf(bytes.NewBufferString("method")).MethodByName("Write").Interface().(func([]byte) (int, error)),
+			method: bytes.NewBufferString("method").Write,
 			iface:  bytes.NewBufferString("interface"),
-			m: map[string]string{
+			m: map[string]interface{}{
 				"key": "value",
 			},
 			unsafePointer: unsafe.Pointer(&Unexported{}),
@@ -306,6 +310,7 @@ func TestCloneUnexportedFields(t *testing.T) {
 			},
 		},
 	}
+	unexported.m["loop"] = &unexported.m
 
 	// Make pointer cycles.
 	unexported.ptr = unexported
@@ -328,11 +333,41 @@ func TestCloneUnexportedFields(t *testing.T) {
 	unexported.fn = nil
 	cloned.fn = nil
 
-	// method cannot be cloned.
-	//a.Assert(cloned.method == nil)
-	a.Assert(cloned.method == nil)
+	// method cannot be compared, but it can be called.
+	a.Assert(cloned.method != nil)
+	a.NilError(cloned.method([]byte("1234")))
 	unexported.method = nil
+	cloned.method = nil
+
+	// cloned.m["loop"] must be exactly the same map of cloned.m.
+	a.Assert(reflect.ValueOf(cloned.m["loop"]).Elem().Pointer() == reflect.ValueOf(cloned.m).Pointer())
+
+	// Don't test this map in reflect.DeepEqual due to bug in Go.
+	// https://github.com/golang/go/issues/33907
+	unexported.m["loop"] = nil
+	cloned.m["loop"] = nil
 
 	// Finally, everything else should equal.
 	a.Equal(unexported, cloned)
+}
+
+func TestCloneUnexportedStructMethod(t *testing.T) {
+	a := assert.New(t)
+
+	// Another complex case: clone a struct and a map of struct instead of ptr to a struct.
+	st := insider{
+		m: map[string]interface{}{
+			"insider": insider{
+				method: bytes.NewBufferString("method").Write,
+			},
+		},
+	}
+	cloned := Clone(st).(insider)
+	a.Use(&st, &cloned)
+
+	// For a struct copy, there is a tricky way to copy method. Test it.
+	a.Assert(cloned.m["insider"].(insider).method != nil)
+	n, err := cloned.m["insider"].(insider).method([]byte("1234"))
+	a.NilError(err)
+	a.Equal(n, 4)
 }

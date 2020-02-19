@@ -16,6 +16,7 @@ func init() {
 	// Some well-known scala-like structs.
 	MarkAsScala(reflect.TypeOf(time.Time{}))
 	MarkAsScala(reflect.TypeOf(reflect.Value{}))
+	MarkAsScala(reflect.TypeOf(reflect.TypeOf(0)))
 }
 
 // MarkAsScala marks t as a scala type so that all clone methods will copy t by value.
@@ -118,7 +119,8 @@ func isScala(k reflect.Kind) bool {
 		reflect.Float32, reflect.Float64,
 		reflect.Complex64, reflect.Complex128,
 		reflect.String, reflect.Func,
-		reflect.UnsafePointer:
+		reflect.UnsafePointer,
+		reflect.Invalid:
 		return true
 	}
 
@@ -186,24 +188,26 @@ func copyScalaValue(src reflect.Value) reflect.Value {
 			return reflect.Zero(t)
 		}
 
-		ptr := src.Pointer()
-
-		// All methods return same pointer which is not useful at all.
-		// In this case, the only choice is to give up and return a nil func.
-		if ptr == baitMethodValue.Pointer() {
-			return reflect.Zero(t)
-		}
-
-		// src.Pointer is the PC address of a func.
-		pc := reflect.New(reflect.TypeOf(uintptr(0)))
-		pc.Elem().SetUint(uint64(uintptr(ptr)))
-
-		fn := reflect.New(src.Type())
-		*(*uintptr)(unsafe.Pointer(fn.Pointer())) = pc.Pointer()
-		return fn.Elem()
+		// Don't use this trick unless we have no choice.
+		return forceClearROFlag(src)
 	case reflect.UnsafePointer:
 		return reflect.ValueOf(unsafe.Pointer(src.Pointer()))
 	}
 
 	panic(fmt.Errorf("go-clone: <bug> impossible type `%v` when cloning private field", src.Type()))
+}
+
+var typeOfInterface = reflect.TypeOf((*interface{})(nil)).Elem()
+
+// forceClearROFlag clears all RO flags in v to make v accessible.
+// It's a hack based on the fact that InterfaceData is always available on RO data.
+// This hack can be broken in any Go version.
+// Don't use it unless we have no choice, e.g. copying func in some edge cases.
+func forceClearROFlag(v reflect.Value) reflect.Value {
+	var i interface{}
+
+	v = v.Convert(typeOfInterface)
+	nv := reflect.ValueOf(&i)
+	*(*[2]uintptr)(unsafe.Pointer(nv.Pointer())) = v.InterfaceData()
+	return nv.Elem().Elem()
 }
