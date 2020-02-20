@@ -52,7 +52,7 @@ func TestWrap(t *testing.T) {
 	a.Assert(orig == actual)
 }
 
-func TestWrapScalaPtr(t *testing.T) {
+func TestWrapScalarPtr(t *testing.T) {
 	a := assert.New(t)
 	i := 123
 	c := &i

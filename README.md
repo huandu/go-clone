@@ -59,23 +59,23 @@ for i := 0; i < 10; i++ {
 }
 ```
 
-### Mark struct type as scala ###
+### Mark struct type as scalar ###
 
-Some struct types can be considered as scala.
+Some struct types can be considered as scalar.
 
 A well-known case is `time.Time`.
 Although there is a pointer `loc *time.Location` inside `time.Time`, we always use `time.Time` by value in all methods.
 When cloning `time.Time`, it should be OK to return a shadow copy.
 
-Currently, following types are marked as scala by default.
+Currently, following types are marked as scalar by default.
 
 * `time.Time`
 * `reflect.Value`
 
-If there is any type defined in built-in package should be considered as scala, please open new issue to let me know.
+If there is any type defined in built-in package should be considered as scalar, please open new issue to let me know.
 I will update the default.
 
-If there is any custom type should be considered as scala, call `MarkAsScala` to mark it manually. See [MarkAsSala sample code](https://godoc.org/github.com/huandu/go-clone#example-MarkAsScala) for more details.
+If there is any custom type should be considered as scalar, call `MarkAsScalar` to mark it manually. See [MarkAsSala sample code](https://godoc.org/github.com/huandu/go-clone#example-MarkAsScalar) for more details.
 
 ### `Wrap`, `Unwrap` and `Undo` ###
 

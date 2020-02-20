@@ -18,7 +18,7 @@ type WithPointer struct {
 	bar []int
 }
 
-func TestMarkAsScala(t *testing.T) {
+func TestMarkAsScalar(t *testing.T) {
 	a := assert.New(t)
 	oldCnt := 0
 	newCnt := 0
@@ -31,9 +31,9 @@ func TestMarkAsScala(t *testing.T) {
 	})
 
 	// Add 2 valid types.
-	MarkAsScala(reflect.TypeOf(new(NoPointer)))
-	MarkAsScala(reflect.TypeOf(new(WithPointer)))
-	MarkAsScala(reflect.TypeOf(new(int))) // Should be ignored.
+	MarkAsScalar(reflect.TypeOf(new(NoPointer)))
+	MarkAsScalar(reflect.TypeOf(new(WithPointer)))
+	MarkAsScalar(reflect.TypeOf(new(int))) // Should be ignored.
 
 	// Count cache against.
 	cachedStructTypes.Range(func(key, value interface{}) bool {
@@ -43,7 +43,7 @@ func TestMarkAsScala(t *testing.T) {
 
 	a.Assert(oldCnt+2 == newCnt)
 
-	// As WithPointer is marked as scala, Clone returns a shadow copy.
+	// As WithPointer is marked as scalar, Clone returns a shadow copy.
 	value := &WithPointer{
 		foo: map[string]string{
 			"key": "value",
@@ -84,7 +84,7 @@ type MapKeys struct {
 	munsafe  map[unsafe.Pointer]interface{}
 }
 
-func TestCopyScalaValue(t *testing.T) {
+func TestCopyScalarValue(t *testing.T) {
 	a := assert.New(t)
 	st := &MapKeys{
 		mb:       map[bool]interface{}{true: 2},

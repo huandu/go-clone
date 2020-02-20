@@ -6,21 +6,21 @@ import (
 	"reflect"
 )
 
-type ScalaType struct {
+type ScalarType struct {
 	stderr *os.File
 }
 
-func ExampleMarkAsScala() {
-	MarkAsScala(reflect.TypeOf(new(ScalaType)))
+func ExampleMarkAsScalar() {
+	MarkAsScalar(reflect.TypeOf(new(ScalarType)))
 
-	scala := &ScalaType{
+	scalar := &ScalarType{
 		stderr: os.Stderr,
 	}
-	cloned := Clone(scala).(*ScalaType)
+	cloned := Clone(scalar).(*ScalarType)
 
-	// cloned is a shadow copy of scala
+	// cloned is a shadow copy of scalar
 	// so that the pointer value should be the same.
-	fmt.Println(scala.stderr == cloned.stderr)
+	fmt.Println(scalar.stderr == cloned.stderr)
 
 	// Output:
 	// true

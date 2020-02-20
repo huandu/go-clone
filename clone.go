@@ -18,9 +18,9 @@ import (
 // If there is a pointer cycle, use Slowly instead.
 //
 // In the most cases, Clone allocates new memory space for deep clone,
-// instead of all scala types and following special values.
+// instead of all scalar types and following special values.
 //
-//     * scalas: all number-like types are copied by value.
+//     * scalar types: all number-like types are copied by value.
 //     * func: Copied by value as func is immutable at runtime.
 //     * string: Copied by value as string is immutable by design.
 //     * unsafe.Pointer: Copied by value as we don't know what's in it.
@@ -61,8 +61,8 @@ type visit struct {
 type visitMap map[visit]reflect.Value
 
 func clone(v reflect.Value, visited visitMap) reflect.Value {
-	if isScala(v.Kind()) {
-		return copyScalaValue(v)
+	if isScalar(v.Kind()) {
+		return copyScalarValue(v)
 	}
 
 	switch v.Kind() {
@@ -96,7 +96,7 @@ func copyArray(src, dst reflect.Value, visited visitMap) {
 	dst = dst.Elem()
 	num := src.Len()
 
-	if isScala(src.Type().Elem().Kind()) {
+	if isScalar(src.Type().Elem().Kind()) {
 		shadowCopy(src, p)
 		return
 	}
@@ -150,12 +150,31 @@ func cloneMap(v reflect.Value, visited visitMap) reflect.Value {
 	return nv
 }
 
+var (
+	// Special case for reflect.Type (actually *reflect.rtype):
+	// The *reflect.rtype should not be copied as it is immutable and
+	// may point to a variable that actual type is not reflect.rtype,
+	// e.g. *reflect.arrayType or *reflect.chanType.
+	typeOfReflectType = reflect.TypeOf(reflect.TypeOf(0))
+)
+
 func clonePtr(v reflect.Value, visited visitMap) reflect.Value {
 	if v.IsNil() {
 		return reflect.Zero(v.Type())
 	}
 
 	t := v.Type()
+
+	if t == typeOfReflectType {
+		if v.CanInterface() {
+			return v
+		}
+
+		ptr := reflect.New(t)
+		p := unsafe.Pointer(ptr.Pointer())
+		shadowCopy(v, p)
+		return ptr.Elem()
+	}
 
 	if visited != nil {
 		visit := visit{
@@ -225,8 +244,8 @@ func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
 		visited[visit] = nv
 	}
 
-	// For scala slice, copy underlying values directly.
-	if isScala(t.Elem().Kind()) {
+	// For scalar slice, copy underlying values directly.
+	if isScalar(t.Elem().Kind()) {
 		src := unsafe.Pointer(v.Pointer())
 		dst := unsafe.Pointer(nv.Pointer())
 		sz := int(t.Elem().Size())
@@ -255,7 +274,7 @@ func copyStruct(src, dst reflect.Value, visited visitMap) {
 	st := loadStructType(dst.Type())
 	shadowCopy(src, ptr)
 
-	// If the struct type is a scala type, a.k.a type without any pointer,
+	// If the struct type is a scalar type, a.k.a type without any pointer,
 	// there is no need to iterate over fields.
 	if len(st.PointerFields) == 0 {
 		return
@@ -332,7 +351,7 @@ func shadowCopy(src reflect.Value, p unsafe.Pointer) {
 		*((*uintptr)(p)) = src.Pointer()
 	case reflect.Func:
 		t := src.Type()
-		src = copyScalaValue(src)
+		src = copyScalarValue(src)
 		val := reflect.NewAt(t, p).Elem()
 		val.Set(src)
 	case reflect.Interface:

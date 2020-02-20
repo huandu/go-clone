@@ -371,3 +371,17 @@ func TestCloneUnexportedStructMethod(t *testing.T) {
 	a.NilError(err)
 	a.Equal(n, 4)
 }
+
+func TestCloneReflectType(t *testing.T) {
+	a := assert.New(t)
+
+	// reflect.rtype should not be deeply cloned.
+	foo := reflect.TypeOf("foo")
+	cloned := Clone(foo).(reflect.Type)
+	a.Use(&foo, &cloned)
+
+	from := reflect.ValueOf(foo)
+	to := reflect.ValueOf(cloned)
+
+	a.Assert(from.Pointer() == to.Pointer())
+}

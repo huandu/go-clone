@@ -13,22 +13,21 @@ var (
 )
 
 func init() {
-	// Some well-known scala-like structs.
-	MarkAsScala(reflect.TypeOf(time.Time{}))
-	MarkAsScala(reflect.TypeOf(reflect.Value{}))
-	MarkAsScala(reflect.TypeOf(reflect.TypeOf(0)))
+	// Some well-known scalar-like structs.
+	MarkAsScalar(reflect.TypeOf(time.Time{}))
+	MarkAsScalar(reflect.TypeOf(reflect.Value{}))
 }
 
-// MarkAsScala marks t as a scala type so that all clone methods will copy t by value.
-// If t is not struct or pointer to struct, MarkAsScala ignores t.
+// MarkAsScalar marks t as a scalar type so that all clone methods will copy t by value.
+// If t is not struct or pointer to struct, MarkAsScalar ignores t.
 //
 // In the most cases, it's not necessary to call it explicitly.
-// If a struct type contains scala type fields only, the struct will be marked as scala automatically.
+// If a struct type contains scalar type fields only, the struct will be marked as scalar automatically.
 //
-// Here is a list of types marked as scala by default:
+// Here is a list of types marked as scalar by default:
 //     * time.Time
 //     * reflect.Value
-func MarkAsScala(t reflect.Type) {
+func MarkAsScalar(t reflect.Type) {
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
@@ -63,7 +62,7 @@ func loadStructType(t reflect.Type) (st structType) {
 		ft := field.Type
 		k := ft.Kind()
 
-		if isScala(k) {
+		if isScalar(k) {
 			continue
 		}
 
@@ -75,7 +74,7 @@ func loadStructType(t reflect.Type) (st structType) {
 
 			elem := ft.Elem()
 
-			if isScala(elem.Kind()) {
+			if isScalar(elem.Kind()) {
 				continue
 			}
 
@@ -111,7 +110,7 @@ func loadStructType(t reflect.Type) (st structType) {
 	return
 }
 
-func isScala(k reflect.Kind) bool {
+func isScalar(k reflect.Kind) bool {
 	switch k {
 	case reflect.Bool,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
@@ -135,7 +134,7 @@ var (
 	baitMethodValue = reflect.ValueOf(baitType{}).MethodByName("Foo")
 )
 
-func copyScalaValue(src reflect.Value) reflect.Value {
+func copyScalarValue(src reflect.Value) reflect.Value {
 	if src.CanInterface() {
 		return src
 	}
