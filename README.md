@@ -75,7 +75,7 @@ Currently, following types are marked as scalar by default.
 If there is any type defined in built-in package should be considered as scalar, please open new issue to let me know.
 I will update the default.
 
-If there is any custom type should be considered as scalar, call `MarkAsScalar` to mark it manually. See [MarkAsSala sample code](https://godoc.org/github.com/huandu/go-clone#example-MarkAsScalar) for more details.
+If there is any custom type should be considered as scalar, call `MarkAsScalar` to mark it manually. See [MarkAsScalar sample code](https://godoc.org/github.com/huandu/go-clone#example-MarkAsScalar) for more details.
 
 ### `Wrap`, `Unwrap` and `Undo` ###
 

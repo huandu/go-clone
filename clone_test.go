@@ -261,6 +261,7 @@ type insider struct {
 	slice         []*Unexported
 	st            Simple
 	unsafePointer unsafe.Pointer
+	t             reflect.Type
 
 	Simple
 }
@@ -308,6 +309,7 @@ func TestCloneUnexportedFields(t *testing.T) {
 				Foo: 456,
 				Bar: "bar2",
 			},
+			t: reflect.TypeOf(&Simple{}),
 		},
 	}
 	unexported.m["loop"] = &unexported.m
@@ -346,6 +348,9 @@ func TestCloneUnexportedFields(t *testing.T) {
 	// https://github.com/golang/go/issues/33907
 	unexported.m["loop"] = nil
 	cloned.m["loop"] = nil
+
+	// reflect.Type should be copied by value.
+	a.Equal(reflect.ValueOf(cloned.t).Pointer(), reflect.ValueOf(unexported.t).Pointer())
 
 	// Finally, everything else should equal.
 	a.Equal(unexported, cloned)
