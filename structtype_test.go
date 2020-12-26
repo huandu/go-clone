@@ -105,7 +105,7 @@ func TestCopyScalarValue(t *testing.T) {
 		mc64:     map[complex64]interface{}{complex(6, 4): 2},
 		mc128:    map[complex128]interface{}{complex(1.2, 8): 2},
 		miface:   map[interface{}]interface{}{"iface": 2},
-		mis:      map[Simple]interface{}{Simple{Foo: 123}: 2},
+		mis:      map[Simple]interface{}{{Foo: 123}: 2},
 		munsafe:  map[unsafe.Pointer]interface{}{unsafe.Pointer(t): 2},
 	}
 	cloned := Clone(st).(*MapKeys)

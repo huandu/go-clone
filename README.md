@@ -1,25 +1,26 @@
-# go-clone: Deep clone any Go data #
+# go-clone: Deep clone any Go data
 
-[![Build Status](https://travis-ci.org/huandu/go-clone.svg?branch=master)](https://travis-ci.org/huandu/go-clone)
-[![GoDoc](https://godoc.org/github.com/huandu/go-clone?status.svg)](https://godoc.org/github.com/huandu/go-clone)
+[![Build Status](https://travis-ci.com/huandu/go-clone.svg?branch=master)](https://travis-ci.com/huandu/go-clone)
+[![Go Doc](https://godoc.org/github.com/huandu/go-clone?status.svg)](https://pkg.go.dev/github.com/huandu/go-clone)
 [![Go Report](https://goreportcard.com/badge/github.com/huandu/go-clone)](https://goreportcard.com/report/github.com/huandu/go-clone)
 [![Coverage Status](https://coveralls.io/repos/github/huandu/go-clone/badge.svg?branch=master)](https://coveralls.io/github/huandu/go-clone?branch=master)
-
 
 Package `clone` provides functions to deep clone any Go data.
 It also provides a wrapper to protect a pointer from any unexpected mutation.
 
 `Clone`/`Slowly` can clone unexported fields of any struct. Use this feature wisely.
 
-## Install ##
+## Install
 
 Use `go get` to install this package.
 
-    go get github.com/huandu/go-clone
+```shell
+go get github.com/huandu/go-clone
+```
 
-## Usage ##
+## Usage
 
-### `Clone` and `Slowly` ###
+### `Clone` and `Slowly`
 
 If we want to clone any Go value, use `Clone`.
 
@@ -59,7 +60,7 @@ for i := 0; i < 10; i++ {
 }
 ```
 
-### Mark struct type as scalar ###
+### Mark struct type as scalar
 
 Some struct types can be considered as scalar.
 
@@ -69,15 +70,15 @@ When cloning `time.Time`, it should be OK to return a shadow copy.
 
 Currently, following types are marked as scalar by default.
 
-* `time.Time`
-* `reflect.Value`
+- `time.Time`
+- `reflect.Value`
 
 If there is any type defined in built-in package should be considered as scalar, please open new issue to let me know.
 I will update the default.
 
 If there is any custom type should be considered as scalar, call `MarkAsScalar` to mark it manually. See [MarkAsScalar sample code](https://godoc.org/github.com/huandu/go-clone#example-MarkAsScalar) for more details.
 
-### `Wrap`, `Unwrap` and `Undo` ###
+### `Wrap`, `Unwrap` and `Undo`
 
 Package `clone` provides `Wrap`/`Unwrap` functions to protect a pointer value from any unexpected mutation.
 It's useful when we want to protect a variable which should be immutable by design,
@@ -112,11 +113,11 @@ Undo(w)
 fmt.Println(w.Foo) // 123
 ```
 
-## Performance ##
+## Performance
 
 Here is the performance data running on my MacBook Pro.
 
-```
+```txt
 MacBook Pro (15-inch, 2019)
 Processor: 2.6 GHz Intel Core i7
 
@@ -125,19 +126,19 @@ goos: darwin
 goarch: amd64
 pkg: github.com/huandu/go-clone
 
-BenchmarkSimpleClone-12     	10254127	       108 ns/op	      32 B/op	       1 allocs/op
-BenchmarkComplexClone-12    	  667335	      1831 ns/op	    1472 B/op	      22 allocs/op
-BenchmarkUnwrap-12          	13315618	        91.2 ns/op	       0 B/op	       0 allocs/op
-BenchmarkSimpleWrap-12      	 5119616	       238 ns/op	      48 B/op	       1 allocs/op
-BenchmarkComplexWrap-12     	 1000000	      1158 ns/op	     688 B/op	      13 allocs/op
+BenchmarkSimpleClone-12         10254127           108 ns/op         32 B/op           1 allocs/op
+BenchmarkComplexClone-12          667335          1831 ns/op       1472 B/op          22 allocs/op
+BenchmarkUnwrap-12              13315618          91.2 ns/op          0 B/op           0 allocs/op
+BenchmarkSimpleWrap-12           5119616           238 ns/op         48 B/op           1 allocs/op
+BenchmarkComplexWrap-12          1000000          1158 ns/op        688 B/op          13 allocs/op
 ```
 
-## Similar packages ##
+## Similar packages
 
-* Package [encoding/gob](https://golang.org/pkg/encoding/gob/): Gob encoder/decoder can be used to clone Go data. However, it's extremely slow.
-* Package [github.com/jinzhu/copier](https://github.com/jinzhu/copier): Copy data by field name. It doesn't work with values containing pointer cycles.
-* Package [github.com/ulule/deepcopier](https://github.com/ulule/deepcopier): Another copier.
+- Package [encoding/gob](https://golang.org/pkg/encoding/gob/): Gob encoder/decoder can be used to clone Go data. However, it's extremely slow.
+- Package [github.com/jinzhu/copier](https://github.com/jinzhu/copier): Copy data by field name. It doesn't work with values containing pointer cycles.
+- Package [github.com/ulule/deepcopier](https://github.com/ulule/deepcopier): Another copier.
 
-## License ##
+## License
 
 This package is licensed under MIT license. See LICENSE for details.

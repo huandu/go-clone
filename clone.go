@@ -361,14 +361,14 @@ func shadowCopy(src reflect.Value, p unsafe.Pointer) {
 	case reflect.Ptr:
 		*((*uintptr)(p)) = src.Pointer()
 	case reflect.Slice:
-		*(*reflect.SliceHeader)(p) = reflect.SliceHeader{
+		*(*sliceHeader)(p) = sliceHeader{
 			Data: src.Pointer(),
 			Len:  src.Len(),
 			Cap:  src.Cap(),
 		}
 	case reflect.String:
 		s := src.String()
-		*(*reflect.StringHeader)(p) = *(*reflect.StringHeader)(unsafe.Pointer(&s))
+		*(*stringHeader)(p) = *(*stringHeader)(unsafe.Pointer(&s))
 	case reflect.Struct:
 		t := src.Type()
 
