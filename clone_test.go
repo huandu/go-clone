@@ -254,6 +254,7 @@ type insider struct {
 	fn            func(s string) string
 	method        func([]byte) (int, error)
 	iface         io.Writer
+	ifaceScalar   io.Writer
 	nilIface      interface{}
 	m             map[string]interface{}
 	ptr           *Unexported
@@ -265,6 +266,10 @@ type insider struct {
 
 	Simple
 }
+
+type scalarWriter int8
+
+func (scalarWriter) Write(p []byte) (n int, err error) { return }
 
 func TestCloneUnexportedFields(t *testing.T) {
 	a := assert.New(t)
@@ -295,8 +300,9 @@ func TestCloneUnexportedFields(t *testing.T) {
 			fn: func(s string) string {
 				return s + ", world!"
 			},
-			method: bytes.NewBufferString("method").Write,
-			iface:  bytes.NewBufferString("interface"),
+			method:      bytes.NewBufferString("method").Write,
+			iface:       bytes.NewBufferString("interface"),
+			ifaceScalar: scalarWriter(123),
 			m: map[string]interface{}{
 				"key": "value",
 			},

@@ -112,7 +112,8 @@ func cloneInterface(v reflect.Value, visited visitMap) reflect.Value {
 	}
 
 	t := v.Type()
-	return clone(v.Elem(), visited).Convert(t)
+	elem := v.Elem()
+	return clone(elem, visited).Convert(elem.Type()).Convert(t)
 }
 
 func cloneMap(v reflect.Value, visited visitMap) reflect.Value {
