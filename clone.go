@@ -272,7 +272,8 @@ func cloneStruct(v reflect.Value, visited visitMap) reflect.Value {
 func copyStruct(src, dst reflect.Value, visited visitMap) {
 	ptr := unsafe.Pointer(dst.Pointer()) // dst must be a Ptr.
 	dst = dst.Elem()
-	st := loadStructType(dst.Type())
+	t := dst.Type()
+	st := loadStructType(t)
 	shadowCopy(src, ptr)
 
 	// If the struct type is a scalar type, a.k.a type without any pointer,
@@ -284,7 +285,24 @@ func copyStruct(src, dst reflect.Value, visited visitMap) {
 	for _, pf := range st.PointerFields {
 		i := int(pf.Index)
 		p := unsafe.Pointer(uintptr(ptr) + pf.Offset)
-		v := clone(src.Field(i), visited)
+		field := src.Field(i)
+
+		// This field can be referenced by a pointer or interface inside itself.
+		// Put the pointer to this field to visited to avoid any error.
+		//
+		// See https://github.com/huandu/go-clone/issues/3.
+		if visited != nil && field.CanAddr() {
+			ft := field.Type()
+			fp := field.Addr().Pointer()
+			visit := visit{
+				p: fp,
+				t: reflect.PtrTo(ft),
+			}
+			nv := reflect.NewAt(ft, p)
+			visited[visit] = nv
+		}
+
+		v := clone(field, visited)
 		shadowCopy(v, p)
 	}
 }

@@ -5,6 +5,7 @@ package clone
 
 import (
 	"bytes"
+	"container/list"
 	"io"
 	"reflect"
 	"testing"
@@ -139,6 +140,22 @@ func deepEqual(t *testing.T, expected, actual interface{}) {
 	}
 
 	a.Equal(actual, expected)
+}
+
+func TestSlowlyLinkedList(t *testing.T) {
+	a := assert.New(t)
+	l := list.New()
+	l.PushBack("v1")
+	l.PushBack("v2")
+	cloned := Slowly(l).(*list.List)
+
+	a.Equal(l.Len(), cloned.Len())
+	a.Equal(l.Front().Value, cloned.Front().Value)
+	a.Equal(l.Back().Value, cloned.Back().Value)
+
+	// There must be only two elements in cloned.
+	a.Equal(cloned.Back(), cloned.Front().Next())
+	a.Equal(cloned.Back().Next(), nil)
 }
 
 func TestCloneArray(t *testing.T) {
