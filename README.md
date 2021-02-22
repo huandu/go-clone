@@ -1,6 +1,6 @@
 # go-clone: Deep clone any Go data
 
-[![Build Status](https://travis-ci.com/huandu/go-clone.svg?branch=master)](https://travis-ci.com/huandu/go-clone)
+[![Go](https://github.com/huandu/go-clone/workflows/Go/badge.svg)](https://github.com/huandu/go-clone/actions)
 [![Go Doc](https://godoc.org/github.com/huandu/go-clone?status.svg)](https://pkg.go.dev/github.com/huandu/go-clone)
 [![Go Report](https://goreportcard.com/badge/github.com/huandu/go-clone)](https://goreportcard.com/report/github.com/huandu/go-clone)
 [![Coverage Status](https://coveralls.io/repos/github/huandu/go-clone/badge.svg?branch=master)](https://coveralls.io/github/huandu/go-clone?branch=master)

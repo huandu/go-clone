@@ -80,9 +80,9 @@ func Wrap(v interface{}) interface{} {
 
 	if t.Kind() == reflect.Struct {
 		// Avoid 1 alloc.
-		copyStruct(elem, field.Addr(), nil)
+		noState.copyStruct(elem, field.Addr())
 	} else {
-		field.Set(clone(elem, nil))
+		field.Set(noState.clone(elem))
 	}
 
 	// Equivalent code: wrapper.Checksum = makeChecksum(v)
@@ -162,7 +162,7 @@ func Undo(v interface{}) {
 
 	origVal := origin(val)
 	elem := val.Elem()
-	elem.Set(clone(origVal.Elem(), nil))
+	elem.Set(noState.clone(origVal.Elem()))
 }
 
 func isWrapped(val reflect.Value) bool {

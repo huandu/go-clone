@@ -158,6 +158,246 @@ func TestSlowlyLinkedList(t *testing.T) {
 	a.Equal(cloned.Back().Next(), nil)
 }
 
+type cycleLinkedList struct {
+	elems []*list.Element
+	elem  *list.Element
+
+	list *list.List
+}
+
+func TestSlowlyCycleLinkedList(t *testing.T) {
+	a := assert.New(t)
+	l := list.New()
+	elem := l.PushBack("123")
+	cycle := &cycleLinkedList{
+		elems: []*list.Element{elem},
+		elem:  elem,
+		list:  l,
+	}
+	cloned := Slowly(cycle).(*cycleLinkedList)
+
+	a.Equal(l.Len(), cloned.list.Len())
+	a.Equal(elem.Value, cloned.list.Front().Value)
+
+	// There must be only one element in cloned.
+	a.Equal(cloned.list.Front(), cloned.list.Back())
+	a.Equal(cloned.list.Front().Next(), nil)
+	a.Equal(cloned.list.Back().Next(), nil)
+}
+
+type cycleList struct {
+	root cycleElement
+	elem *cycleElement
+}
+
+type cycleElement struct {
+	next *cycleElement
+	list *cycleList
+}
+
+type cycleComplex struct {
+	ch           chan bool
+	scalar       int
+	scalarArray  *[1]int
+	scalarSlice  []string
+	scalarStruct *reflect.Value
+
+	nilSlice []*cycleElement
+	nilMap   map[*cycleElement]*cycleElement
+	nilIface interface{}
+
+	array          [2]*cycleElement
+	slice          []*cycleElement
+	iface1, iface2 interface{}
+	ptr1, ptr2     *cycleElement
+
+	scalarMap  map[string]int
+	plainMap   map[int]*cycleElement
+	simpleMap  map[*cycleList]*cycleElement
+	complexMap map[*cycleElement]*cycleElement
+
+	pair      cycleElementPair
+	pairValue interface{}
+
+	refSlice      *[]*cycleElement
+	refComplexMap *map[*cycleElement]*cycleElement
+}
+
+type cycleElementPair struct {
+	elem1, elem2 *cycleElement
+}
+
+func makeCycleElement() *cycleElement {
+	list := &cycleList{}
+	elem := &cycleElement{
+		next: &list.root,
+		list: list,
+	}
+	list.root.next = elem
+	list.root.list = list
+	list.elem = elem
+	return &list.root
+}
+
+func (elem *cycleElement) validateCycle(t *testing.T) {
+	a := assert.New(t)
+
+	// elem is the &list.root.
+	a.Assert(elem == &elem.list.root)
+	a.Assert(elem.next == elem.list.elem)
+	a.Assert(elem.next.next == elem)
+}
+
+func TestSlowlyFixInvalidCyclePointers(t *testing.T) {
+	var scalarArray [1]int
+	scalarStruct := reflect.ValueOf(1)
+	value := &cycleComplex{
+		ch:           make(chan bool),
+		scalar:       123,
+		scalarArray:  &scalarArray,
+		scalarSlice:  []string{"hello"},
+		scalarStruct: &scalarStruct,
+
+		array:  [2]*cycleElement{makeCycleElement(), makeCycleElement()},
+		slice:  []*cycleElement{makeCycleElement(), makeCycleElement()},
+		iface1: makeCycleElement(),
+		iface2: makeCycleElement(),
+		ptr1:   makeCycleElement(),
+		ptr2:   makeCycleElement(),
+
+		scalarMap: map[string]int{
+			"foo": 123,
+		},
+		plainMap: map[int]*cycleElement{
+			123: makeCycleElement(),
+		},
+		simpleMap: map[*cycleList]*cycleElement{
+			makeCycleElement().list: makeCycleElement(),
+		},
+		complexMap: map[*cycleElement]*cycleElement{
+			makeCycleElement(): makeCycleElement(),
+		},
+	}
+	value.refSlice = &value.slice
+	value.refComplexMap = &value.complexMap
+	cloned := Slowly(value).(*cycleComplex)
+
+	cloned.array[0].validateCycle(t)
+	cloned.array[1].validateCycle(t)
+	cloned.slice[0].validateCycle(t)
+	cloned.slice[1].validateCycle(t)
+
+	cloned.iface1.(*cycleElement).validateCycle(t)
+	cloned.iface2.(*cycleElement).validateCycle(t)
+	cloned.ptr1.validateCycle(t)
+	cloned.ptr2.validateCycle(t)
+	cloned.plainMap[123].validateCycle(t)
+
+	for k, v := range cloned.simpleMap {
+		k.root.validateCycle(t)
+		k.elem.next.validateCycle(t)
+		v.validateCycle(t)
+	}
+
+	for k, v := range cloned.complexMap {
+		k.validateCycle(t)
+		v.validateCycle(t)
+	}
+
+	a := assert.New(t)
+	a.Assert(cloned.refSlice == &cloned.slice)
+	a.Assert(cloned.refComplexMap == &cloned.complexMap)
+}
+
+func makeLinkedElements() (elem1, elem2 *cycleElement) {
+	list := &cycleList{}
+	elem1 = &list.root
+	elem2 = &cycleElement{
+		next: &list.root,
+		list: list,
+	}
+	list.root.next = &cycleElement{}
+	list.elem = elem2
+
+	return
+}
+
+func (elem *cycleElement) validateLinked(t *testing.T) {
+	a := assert.New(t)
+
+	// elem is the elem2.
+	a.Assert(elem == elem.list.elem)
+	a.Assert(elem.next == &elem.list.root)
+	a.Assert(elem.next.next.next == nil)
+}
+
+func TestSlowlyFixInvalidLinkedPointers(t *testing.T) {
+	value := &cycleComplex{
+		array: func() (elems [2]*cycleElement) {
+			elems[0], elems[1] = makeLinkedElements()
+			return
+		}(),
+		slice: func() []*cycleElement {
+			elem1, elem2 := makeLinkedElements()
+			return []*cycleElement{elem1, elem2}
+		}(),
+
+		scalarMap: map[string]int{
+			"foo": 123,
+		},
+		plainMap: func() map[int]*cycleElement {
+			elem1, elem2 := makeLinkedElements()
+			return map[int]*cycleElement{
+				1: elem1,
+				2: elem2,
+			}
+		}(),
+		simpleMap: func() map[*cycleList]*cycleElement {
+			elem1, elem2 := makeLinkedElements()
+			return map[*cycleList]*cycleElement{
+				elem2.list: elem1,
+			}
+		}(),
+		complexMap: func() map[*cycleElement]*cycleElement {
+			elem1, elem2 := makeLinkedElements()
+			return map[*cycleElement]*cycleElement{
+				elem1: elem2,
+			}
+		}(),
+	}
+	value.refSlice = &value.slice
+	value.refComplexMap = &value.complexMap
+	value.iface1, value.iface2 = makeLinkedElements()
+	value.ptr1, value.ptr2 = makeLinkedElements()
+	value.pair.elem1, value.pair.elem2 = makeLinkedElements()
+	var pair cycleElementPair
+	pair.elem1, pair.elem2 = makeLinkedElements()
+	value.pairValue = pair
+	cloned := Slowly(value).(*cycleComplex)
+
+	cloned.array[1].validateLinked(t)
+	cloned.slice[1].validateLinked(t)
+
+	cloned.iface2.(*cycleElement).validateLinked(t)
+	cloned.ptr2.validateLinked(t)
+	cloned.plainMap[2].validateLinked(t)
+
+	for k := range cloned.simpleMap {
+		k.elem.validateLinked(t)
+	}
+
+	for _, v := range cloned.complexMap {
+		v.validateLinked(t)
+	}
+
+	value.pair.elem2.validateLinked(t)
+	value.pairValue.(cycleElementPair).elem2.validateLinked(t)
+
+	a := assert.New(t)
+	a.Assert(cloned.refSlice == &cloned.slice)
+	a.Assert(cloned.refComplexMap == &cloned.complexMap)
+}
+
 func TestCloneArray(t *testing.T) {
 	a := assert.New(t)
 	arr := [2]*T{

@@ -34,7 +34,7 @@ func Clone(v interface{}) interface{} {
 	}
 
 	val := reflect.ValueOf(v)
-	cloned := clone(val, nil)
+	cloned := noState.clone(val)
 	return cloned.Interface()
 }
 
@@ -48,9 +48,21 @@ func Slowly(v interface{}) interface{} {
 	}
 
 	val := reflect.ValueOf(v)
-	cloned := clone(val, visitMap{})
+	state := &cloneState{
+		visited: visitMap{},
+		invalid: invalidPointers{},
+	}
+	cloned := state.clone(val)
+	state.fix(cloned)
 	return cloned.Interface()
 }
+
+type cloneState struct {
+	visited visitMap
+	invalid invalidPointers
+}
+
+var noState *cloneState
 
 type visit struct {
 	p     uintptr
@@ -59,39 +71,40 @@ type visit struct {
 }
 
 type visitMap map[visit]reflect.Value
+type invalidPointers map[visit]reflect.Value
 
-func clone(v reflect.Value, visited visitMap) reflect.Value {
+func (state *cloneState) clone(v reflect.Value) reflect.Value {
 	if isScalar(v.Kind()) {
 		return copyScalarValue(v)
 	}
 
 	switch v.Kind() {
 	case reflect.Array:
-		return cloneArray(v, visited)
+		return state.cloneArray(v)
 	case reflect.Chan:
 		return reflect.MakeChan(v.Type(), v.Cap())
 	case reflect.Interface:
-		return cloneInterface(v, visited)
+		return state.cloneInterface(v)
 	case reflect.Map:
-		return cloneMap(v, visited)
+		return state.cloneMap(v)
 	case reflect.Ptr:
-		return clonePtr(v, visited)
+		return state.clonePtr(v)
 	case reflect.Slice:
-		return cloneSlice(v, visited)
+		return state.cloneSlice(v)
 	case reflect.Struct:
-		return cloneStruct(v, visited)
+		return state.cloneStruct(v)
 	default:
 		panic(fmt.Errorf("go-clone: <bug> unsupported type `%v`", v.Type()))
 	}
 }
 
-func cloneArray(v reflect.Value, visited visitMap) reflect.Value {
+func (state *cloneState) cloneArray(v reflect.Value) reflect.Value {
 	dst := reflect.New(v.Type())
-	copyArray(v, dst, visited)
+	state.copyArray(v, dst)
 	return dst.Elem()
 }
 
-func copyArray(src, dst reflect.Value, visited visitMap) {
+func (state *cloneState) copyArray(src, dst reflect.Value) {
 	p := unsafe.Pointer(dst.Pointer()) // dst must be a Ptr.
 	dst = dst.Elem()
 	num := src.Len()
@@ -102,50 +115,50 @@ func copyArray(src, dst reflect.Value, visited visitMap) {
 	}
 
 	for i := 0; i < num; i++ {
-		dst.Index(i).Set(clone(src.Index(i), visited))
+		dst.Index(i).Set(state.clone(src.Index(i)))
 	}
 }
 
-func cloneInterface(v reflect.Value, visited visitMap) reflect.Value {
+func (state *cloneState) cloneInterface(v reflect.Value) reflect.Value {
 	if v.IsNil() {
 		return reflect.Zero(v.Type())
 	}
 
 	t := v.Type()
 	elem := v.Elem()
-	return clone(elem, visited).Convert(elem.Type()).Convert(t)
+	return state.clone(elem).Convert(elem.Type()).Convert(t)
 }
 
-func cloneMap(v reflect.Value, visited visitMap) reflect.Value {
+func (state *cloneState) cloneMap(v reflect.Value) reflect.Value {
 	if v.IsNil() {
 		return reflect.Zero(v.Type())
 	}
 
 	t := v.Type()
 
-	if visited != nil {
-		visit := visit{
+	if state != nil {
+		vst := visit{
 			p: v.Pointer(),
 			t: t,
 		}
 
-		if val, ok := visited[visit]; ok {
+		if val, ok := state.visited[vst]; ok {
 			return val
 		}
 	}
 
 	nv := reflect.MakeMap(t)
 
-	if visited != nil {
-		visit := visit{
+	if state != nil {
+		vst := visit{
 			p: v.Pointer(),
 			t: t,
 		}
-		visited[visit] = nv
+		state.visited[vst] = nv
 	}
 
 	for iter := mapIter(v); iter.Next(); {
-		nv.SetMapIndex(clone(iter.Key(), visited), clone(iter.Value(), visited))
+		nv.SetMapIndex(state.clone(iter.Key()), state.clone(iter.Value()))
 	}
 
 	return nv
@@ -159,7 +172,7 @@ var (
 	typeOfReflectType = reflect.TypeOf(reflect.TypeOf(0))
 )
 
-func clonePtr(v reflect.Value, visited visitMap) reflect.Value {
+func (state *cloneState) clonePtr(v reflect.Value) reflect.Value {
 	if v.IsNil() {
 		return reflect.Zero(v.Type())
 	}
@@ -177,13 +190,13 @@ func clonePtr(v reflect.Value, visited visitMap) reflect.Value {
 		return ptr.Elem()
 	}
 
-	if visited != nil {
-		visit := visit{
+	if state != nil {
+		vst := visit{
 			p: v.Pointer(),
 			t: t,
 		}
 
-		if val, ok := visited[visit]; ok {
+		if val, ok := state.visited[vst]; ok {
 			return val
 		}
 	}
@@ -191,29 +204,39 @@ func clonePtr(v reflect.Value, visited visitMap) reflect.Value {
 	elemType := t.Elem()
 	nv := reflect.New(elemType)
 
-	if visited != nil {
-		visit := visit{
+	if state != nil {
+		vst := visit{
 			p: v.Pointer(),
 			t: t,
 		}
-		visited[visit] = nv
+		state.visited[vst] = nv
 	}
 
 	src := v.Elem()
 
 	switch elemType.Kind() {
 	case reflect.Struct:
-		copyStruct(src, nv, visited)
+		state.copyStruct(src, nv)
 	case reflect.Array:
-		copyArray(src, nv, visited)
+		state.copyArray(src, nv)
 	default:
-		nv.Elem().Set(clone(src, visited))
+		nv.Elem().Set(state.clone(src))
+	}
+
+	// If this pointer is the address of a struct field and it's a cycle pointer,
+	// it may be updated.
+	if state != nil {
+		vst := visit{
+			p: v.Pointer(),
+			t: t,
+		}
+		nv = state.visited[vst]
 	}
 
 	return nv
 }
 
-func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
+func (state *cloneState) cloneSlice(v reflect.Value) reflect.Value {
 	if v.IsNil() {
 		return reflect.Zero(v.Type())
 	}
@@ -221,14 +244,14 @@ func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
 	t := v.Type()
 	num := v.Len()
 
-	if visited != nil {
-		visit := visit{
+	if state != nil {
+		vst := visit{
 			p:     v.Pointer(),
 			extra: num,
 			t:     t,
 		}
 
-		if val, ok := visited[visit]; ok {
+		if val, ok := state.visited[vst]; ok {
 			return val
 		}
 	}
@@ -236,13 +259,13 @@ func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
 	c := v.Cap()
 	nv := reflect.MakeSlice(t, num, c)
 
-	if visited != nil {
-		visit := visit{
+	if state != nil {
+		vst := visit{
 			p:     v.Pointer(),
 			extra: num,
 			t:     t,
 		}
-		visited[visit] = nv
+		state.visited[vst] = nv
 	}
 
 	// For scalar slice, copy underlying values directly.
@@ -255,21 +278,21 @@ func cloneSlice(v reflect.Value, visited visitMap) reflect.Value {
 		copy((*[math.MaxInt32]byte)(dst)[:l:cc], (*[math.MaxInt32]byte)(src)[:l:cc])
 	} else {
 		for i := 0; i < num; i++ {
-			nv.Index(i).Set(clone(v.Index(i), visited))
+			nv.Index(i).Set(state.clone(v.Index(i)))
 		}
 	}
 
 	return nv
 }
 
-func cloneStruct(v reflect.Value, visited visitMap) reflect.Value {
+func (state *cloneState) cloneStruct(v reflect.Value) reflect.Value {
 	t := v.Type()
 	nv := reflect.New(t)
-	copyStruct(v, nv, visited)
+	state.copyStruct(v, nv)
 	return nv.Elem()
 }
 
-func copyStruct(src, dst reflect.Value, visited visitMap) {
+func (state *cloneState) copyStruct(src, dst reflect.Value) {
 	ptr := unsafe.Pointer(dst.Pointer()) // dst must be a Ptr.
 	dst = dst.Elem()
 	t := dst.Type()
@@ -291,18 +314,32 @@ func copyStruct(src, dst reflect.Value, visited visitMap) {
 		// Put the pointer to this field to visited to avoid any error.
 		//
 		// See https://github.com/huandu/go-clone/issues/3.
-		if visited != nil && field.CanAddr() {
+		if state != nil && field.CanAddr() {
 			ft := field.Type()
 			fp := field.Addr().Pointer()
-			visit := visit{
+			vst := visit{
 				p: fp,
 				t: reflect.PtrTo(ft),
 			}
 			nv := reflect.NewAt(ft, p)
-			visited[visit] = nv
+
+			// The address of this field was visited, so fp must be a cycle pointer.
+			// As this field is not fully cloned, the val stored in visited[visit] must be wrong.
+			// It must be replaced by nv which will be the right value (it's incomplete right now).
+			//
+			// Unfortunately, if the val was used by previous clone routines,
+			// there is no easy way to fix wrong values - all pointers must be traversed and fixed.
+			if val, ok := state.visited[vst]; ok {
+				state.invalid[visit{
+					p: val.Pointer(),
+					t: vst.t,
+				}] = nv
+			}
+
+			state.visited[vst] = nv
 		}
 
-		v := clone(field, visited)
+		v := state.clone(field)
 		shadowCopy(v, p)
 	}
 }
@@ -419,4 +456,391 @@ func shadowCopy(src reflect.Value, p unsafe.Pointer) {
 	default:
 		panic(fmt.Errorf("go-clone: <bug> impossible type `%v` when cloning private field", src.Type()))
 	}
+}
+
+// fix tranverses v to update all pointer values in state.invalid.
+func (state *cloneState) fix(v reflect.Value) {
+	if state == nil || len(state.invalid) == 0 {
+		return
+	}
+
+	fix := &fixState{
+		fixed:   fixMap{},
+		invalid: state.invalid,
+	}
+	fix.fix(v)
+}
+
+type fixState struct {
+	fixed   fixMap
+	invalid invalidPointers
+}
+
+type fixMap map[visit]struct{}
+
+func (fix *fixState) fix(v reflect.Value) (copied reflect.Value, changed int) {
+	if isScalar(v.Kind()) {
+		return
+	}
+
+	switch v.Kind() {
+	case reflect.Array:
+		return fix.fixArray(v)
+	case reflect.Chan:
+		// Do nothing.
+		return
+	case reflect.Interface:
+		return fix.fixInterface(v)
+	case reflect.Map:
+		return fix.fixMap(v)
+	case reflect.Ptr:
+		return fix.fixPtr(v)
+	case reflect.Slice:
+		return fix.fixSlice(v)
+	case reflect.Struct:
+		return fix.fixStruct(v)
+	default:
+		panic(fmt.Errorf("go-clone: <bug> unsupported type `%v`", v.Type()))
+	}
+}
+
+func (fix *fixState) fixArray(v reflect.Value) (copied reflect.Value, changed int) {
+	t := v.Type()
+	et := t.Elem()
+	kind := et.Kind()
+
+	if isScalar(kind) {
+		return
+	}
+
+	l := v.Len()
+
+	for i := 0; i < l; i++ {
+		elem := v.Index(i)
+
+		if kind == reflect.Ptr {
+			vst := visit{
+				p: elem.Pointer(),
+				t: et,
+			}
+
+			if nv, ok := fix.invalid[vst]; ok {
+				// If elem cannot be set, v must be copied to make it settable.
+				// Don't do it unless there is no other choices.
+				if !elem.CanSet() {
+					copied = reflect.New(t).Elem()
+					shadowCopy(v, unsafe.Pointer(copied.Addr().Pointer()))
+					_, changed = fix.fixArray(copied)
+					return
+				}
+
+				elem.Set(nv)
+				changed++
+				continue
+			}
+		}
+
+		fixed, c := fix.fix(elem)
+		changed += c
+
+		if fixed.IsValid() {
+			// If elem cannot be set, v must be copied to make it settable.
+			// Don't do it unless there is no other choices.
+			if !elem.CanSet() {
+				copied = reflect.New(t).Elem()
+				shadowCopy(v, unsafe.Pointer(copied.Addr().Pointer()))
+				_, changed = fix.fixArray(copied)
+				return
+			}
+
+			elem.Set(fixed)
+		}
+	}
+
+	return
+}
+
+func (fix *fixState) fixInterface(v reflect.Value) (copied reflect.Value, changed int) {
+	if v.IsNil() {
+		return
+	}
+
+	elem := v.Elem()
+	t := elem.Type()
+	kind := elem.Kind()
+
+	if kind == reflect.Ptr {
+		vst := visit{
+			p: elem.Pointer(),
+			t: t,
+		}
+
+		if nv, ok := fix.invalid[vst]; ok {
+			copied = nv.Convert(v.Type())
+			changed++
+			return
+		}
+	}
+
+	copied, changed = fix.fix(elem)
+
+	if copied.IsValid() {
+		copied = copied.Convert(v.Type())
+	}
+
+	return
+}
+
+func (fix *fixState) fixMap(v reflect.Value) (copied reflect.Value, changed int) {
+	if v.IsNil() {
+		return
+	}
+
+	t := v.Type()
+	vst := visit{
+		p: v.Pointer(),
+		t: t,
+	}
+
+	if _, ok := fix.fixed[vst]; ok {
+		return
+	}
+
+	fix.fixed[vst] = struct{}{}
+
+	kt := t.Key()
+	et := t.Elem()
+	keyKind := kt.Kind()
+	elemKind := et.Kind()
+
+	if isScalar(keyKind) && isScalar(elemKind) {
+		return
+	}
+
+	invalidKeys := map[reflect.Value][2]reflect.Value{}
+
+	for iter := mapIter(v); iter.Next(); {
+		key := iter.Key()
+		elem := iter.Value()
+		var fixed reflect.Value
+		c := 0
+
+		if elemKind == reflect.Ptr {
+			vst := visit{
+				p: elem.Pointer(),
+				t: et,
+			}
+
+			if nv, ok := fix.invalid[vst]; ok {
+				fixed = nv
+				c++
+			} else {
+				fixed, c = fix.fixPtr(elem)
+			}
+		} else {
+			fixed, c = fix.fix(elem)
+		}
+
+		changed += c
+		c = 0
+
+		if fixed.IsValid() {
+			v = forceSetMapIndex(v, key, fixed)
+			elem = fixed
+			fixed = reflect.Value{}
+		}
+
+		if keyKind == reflect.Ptr {
+			vst := visit{
+				p: key.Pointer(),
+				t: kt,
+			}
+
+			if nv, ok := fix.invalid[vst]; ok {
+				fixed = nv
+				c++
+			} else {
+				fixed, c = fix.fixPtr(key)
+			}
+		} else {
+			fixed, c = fix.fix(key)
+		}
+
+		changed += c
+
+		// Key cannot be changed immediately inside map range iteration.
+		// Do it later.
+		if fixed.IsValid() {
+			invalidKeys[key] = [2]reflect.Value{fixed, elem}
+		}
+	}
+
+	for key, kv := range invalidKeys {
+		v = forceSetMapIndex(v, key, reflect.Value{})
+		v = forceSetMapIndex(v, kv[0], kv[1])
+	}
+
+	return
+}
+
+func forceSetMapIndex(v, key, elem reflect.Value) (nv reflect.Value) {
+	nv = v
+
+	if !v.CanInterface() {
+		nv = forceClearROFlag(v)
+	}
+
+	if !key.CanInterface() {
+		key = forceClearROFlag(key)
+	}
+
+	if elem.IsValid() && !elem.CanInterface() {
+		elem = forceClearROFlag(elem)
+	}
+
+	nv.SetMapIndex(key, elem)
+	return
+}
+
+func (fix *fixState) fixPtr(v reflect.Value) (copied reflect.Value, changed int) {
+	if v.IsNil() {
+		return
+	}
+
+	vst := visit{
+		p: v.Pointer(),
+		t: v.Type(),
+	}
+
+	if _, ok := fix.invalid[vst]; ok {
+		panic(fmt.Errorf("go-clone: <bug> invalid pointers must have been fixed in other methods"))
+	}
+
+	if _, ok := fix.fixed[vst]; ok {
+		return
+	}
+
+	fix.fixed[vst] = struct{}{}
+
+	elem := v.Elem()
+	_, changed = fix.fix(elem)
+	return
+}
+
+func (fix *fixState) fixSlice(v reflect.Value) (copied reflect.Value, changed int) {
+	if v.IsNil() {
+		return
+	}
+
+	t := v.Type()
+	et := t.Elem()
+	kind := et.Kind()
+
+	if isScalar(kind) {
+		return
+	}
+
+	l := v.Len()
+	p := unsafe.Pointer(v.Pointer())
+	vst := visit{
+		p:     uintptr(p),
+		extra: l,
+		t:     t,
+	}
+
+	if _, ok := fix.fixed[vst]; ok {
+		return
+	}
+
+	fix.fixed[vst] = struct{}{}
+
+	for i := 0; i < l; i++ {
+		elem := v.Index(i)
+		var fixed reflect.Value
+		c := 0
+
+		if kind == reflect.Ptr {
+			vst := visit{
+				p: elem.Pointer(),
+				t: et,
+			}
+
+			if nv, ok := fix.invalid[vst]; ok {
+				fixed = nv
+			} else {
+				fixed, c = fix.fixPtr(elem)
+			}
+		} else {
+			fixed, c = fix.fix(elem)
+		}
+
+		changed += c
+
+		if fixed.IsValid() {
+			sz := et.Size()
+			elemPtr := unsafe.Pointer(uintptr(p) + sz*uintptr(i))
+			shadowCopy(fixed, elemPtr)
+		}
+	}
+
+	return
+}
+
+func (fix *fixState) fixStruct(v reflect.Value) (copied reflect.Value, changed int) {
+	t := v.Type()
+	st := loadStructType(t)
+
+	if len(st.PointerFields) == 0 {
+		return
+	}
+
+	for _, pf := range st.PointerFields {
+		i := int(pf.Index)
+		field := v.Field(i)
+
+		ft := field.Type()
+
+		if ft.Kind() == reflect.Ptr {
+			vst := visit{
+				p: field.Pointer(),
+				t: ft,
+			}
+
+			if nv, ok := fix.invalid[vst]; ok {
+				// If v is not addressable, a new struct must be allocated.
+				// Don't do it unless there is no other choices.
+				if !v.CanAddr() {
+					copied = reflect.New(t).Elem()
+					shadowCopy(v, unsafe.Pointer(copied.Addr().Pointer()))
+					_, changed = fix.fixStruct(copied)
+					return
+				}
+
+				ptr := unsafe.Pointer(v.Addr().Pointer())
+				p := unsafe.Pointer(uintptr(ptr) + pf.Offset)
+				shadowCopy(nv, p)
+				continue
+			}
+		}
+
+		fixed, c := fix.fix(field)
+		changed += c
+
+		if fixed.IsValid() {
+			// If v is not addressable, a new struct must be allocated.
+			// Don't do it unless there is no other choices.
+			if !v.CanAddr() {
+				copied = reflect.New(t).Elem()
+				shadowCopy(v, unsafe.Pointer(copied.Addr().Pointer()))
+				_, changed = fix.fixStruct(copied)
+				return
+			}
+
+			ptr := unsafe.Pointer(v.Addr().Pointer())
+			p := unsafe.Pointer(uintptr(ptr) + pf.Offset)
+			shadowCopy(fixed, p)
+		}
+	}
+
+	return
 }
