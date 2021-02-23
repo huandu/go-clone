@@ -78,17 +78,17 @@ I will update the default.
 
 If there is any custom type should be considered as scalar, call `MarkAsScalar` to mark it manually. See [MarkAsScalar sample code](https://godoc.org/github.com/huandu/go-clone#example-MarkAsScalar) for more details.
 
-### Clone "no-copy" structs defined in `sync` and `sync/atomic`
+### Clone "no-copy" types defined in `sync` and `sync/atomic`
 
 There are some "no-copy" types like `sync.Mutex`, `atomic.Value`, etc.
 They cannot be cloned by copying all fields one by one, but we can alloc a new zero value and call methods to do proper initialization.
 
-Currently, following "no-copy" types can be cloned properly.
+Currently, all "no-copy" types defined in `sync` and `sync/atomic` can be cloned properly using following strategies.
 
 - `sync.Mutex`: Cloned value is a newly allocated zero mutex.
 - `sync.RWMutex`: Cloned value is a newly allocated zero mutex.
 - `sync.WaitGroup`: Cloned value is a newly allocated zero wait group.
-- `*sync.Cond`: Cloned value is a cond with a newly allocated zero lock.
+- `sync.Cond`: Cloned value is a cond with a newly allocated zero lock.
 - `sync.Pool`: Cloned value is an empty pool with the same `New` function.
 - `sync.Map`: Cloned value is a sync map with cloned key/value pairs.
 - `sync.Once`: Cloned value is a once type with the same done flag.
@@ -97,9 +97,9 @@ Currently, following "no-copy" types can be cloned properly.
 If there is any type defined in built-in package should be considered as "no-copy" types, please open new issue to let me know.
 I will update the default.
 
-### SSet custom clone function
+### Set custom clone function
 
-If default clone strategy doesn't work for some custom types, we can call `SetCustomFunc` to clone it manually.
+If default clone strategy doesn't work for a struct type, we can call `SetCustomFunc` to clone it manually.
 
 See [SetCustomFunc sample code](https://godoc.org/github.com/huandu/go-clone#example-SetCustomFunc) for more details.
 
