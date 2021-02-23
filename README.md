@@ -97,9 +97,10 @@ Currently, all "no-copy" types defined in `sync` and `sync/atomic` can be cloned
 If there is any type defined in built-in package should be considered as "no-copy" types, please open new issue to let me know.
 I will update the default.
 
-### Set custom clone function
+### Set custom clone functions
 
-If default clone strategy doesn't work for a struct type, we can call `SetCustomFunc` to clone it manually.
+If default clone strategy doesn't work for a struct type, we can call `SetCustomFunc` to implement custom clone logic.
+`Clone` and `Slowly` can be used in custom clone functions.
 
 See [SetCustomFunc sample code](https://godoc.org/github.com/huandu/go-clone#example-SetCustomFunc) for more details.
 

@@ -209,26 +209,22 @@ func ExampleSetCustomFunc() {
 
 	// Filter nil values in Data when cloning old value.
 	SetCustomFunc(reflect.TypeOf(MyStruct{}), func(old, new reflect.Value) {
-		var value MyStruct
+		// The new is a zero value of MyStruct.
+		// We can get its address to update it.
+		value := new.Addr().Interface().(*MyStruct)
 
 		// The old is guaranteed to be a MyStruct.
-		data := old.FieldByName("Data")
-		l := data.Len()
+		// As old.CanAddr() may be false, we'd better to read Data field directly.
+		data := old.FieldByName("Data").Interface().([]interface{})
 
-		for i := 0; i < l; i++ {
-			v := data.Index(i)
-
-			if v.IsNil() {
+		for _, v := range data {
+			if v == nil {
 				continue
 			}
 
-			n := Clone(v.Interface())
+			n := Clone(v)
 			value.Data = append(value.Data, n)
 		}
-
-		// The new is a zero value of MySlice.
-		// Set new to slice to return value to outside.
-		new.Set(reflect.ValueOf(value))
 	})
 
 	slice := &MyStruct{
