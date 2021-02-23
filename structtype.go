@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 )
@@ -16,6 +17,52 @@ func init() {
 	// Some well-known scalar-like structs.
 	MarkAsScalar(reflect.TypeOf(time.Time{}))
 	MarkAsScalar(reflect.TypeOf(reflect.Value{}))
+
+	// Some well-known no-copy structs.
+	//
+	// Almost all structs defined in package "sync" and "sync/atomic" are set
+	// except `sync.Once` which can be safely cloned with a correct done value.
+	SetCustomFunc(reflect.TypeOf(sync.Mutex{}), emptyCloneFunc)
+	SetCustomFunc(reflect.TypeOf(sync.RWMutex{}), emptyCloneFunc)
+	SetCustomFunc(reflect.TypeOf(sync.WaitGroup{}), emptyCloneFunc)
+	SetCustomFunc(reflect.TypeOf(sync.Cond{}), func(old, new reflect.Value) {
+		// Copy the New func from old value.
+		oldL := old.FieldByName("L")
+		newL := noState.clone(oldL)
+		new.FieldByName("L").Set(newL)
+	})
+	SetCustomFunc(reflect.TypeOf(sync.Pool{}), func(old, new reflect.Value) {
+		// Copy the New func from old value.
+		oldFn := old.FieldByName("New")
+		newFn := noState.clone(oldFn)
+		new.FieldByName("New").Set(newFn)
+	})
+	SetCustomFunc(reflect.TypeOf(sync.Map{}), func(old, new reflect.Value) {
+		if !old.CanAddr() {
+			return
+		}
+
+		// Clone all values inside sync.Map.
+		oldMap := old.Addr().Interface().(*sync.Map)
+		newMap := new.Addr().Interface().(*sync.Map)
+		oldMap.Range(func(key, value interface{}) bool {
+			k := Clone(key)
+			v := Clone(value)
+			newMap.Store(k, v)
+			return true
+		})
+	})
+	SetCustomFunc(reflect.TypeOf(atomic.Value{}), func(old, new reflect.Value) {
+		if !old.CanAddr() {
+			return
+		}
+
+		// Clone value inside atomic.Value.
+		oldValue := old.Addr().Interface().(*atomic.Value)
+		newValue := new.Addr().Interface().(*atomic.Value)
+		v := Clone(oldValue.Load())
+		newValue.Store(v)
+	})
 }
 
 // MarkAsScalar marks t as a scalar type so that all clone methods will copy t by value.
@@ -39,13 +86,62 @@ func MarkAsScalar(t reflect.Type) {
 	cachedStructTypes.Store(t, structType{})
 }
 
+// Func is a custom func to clone value from old to new.
+// The new is a zero value
+// which `new.CanSet()` and `new.CanAddr()` is guaranteed to be true.
+//
+// Func must update the new to return result.
+type Func func(old, new reflect.Value)
+
+// emptyCloneFunc is used to disable shadow copy.
+// It's useful when cloning sync.Mutex as cloned value must be a zero value.
+func emptyCloneFunc(old, new reflect.Value) {}
+
+// SetCustomFunc sets a custom clone function for type t.
+// If t is not struct or pointer to struct, SetCustomFunc ignores t.
+func SetCustomFunc(t reflect.Type, fn Func) {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return
+	}
+
+	cachedStructTypes.Store(t, structType{
+		fn: fn,
+	})
+}
+
 type structType struct {
 	PointerFields []structFieldType
+	fn            Func
 }
 
 type structFieldType struct {
 	Offset uintptr // The offset from the beginning of the struct.
 	Index  int     // The index of the field.
+}
+
+// NewFrom creates a new value of src.Type() and shadow copies all content from src.
+func (st *structType) Copy(src, nv reflect.Value) {
+	dst := nv.Elem()
+
+	if st.fn != nil {
+		if !src.CanInterface() {
+			src = forceClearROFlag(src)
+		}
+
+		st.fn(src, dst)
+		return
+	}
+
+	ptr := unsafe.Pointer(nv.Pointer())
+	shadowCopy(src, ptr)
+}
+
+func (st *structType) CanShadowCopy() bool {
+	return len(st.PointerFields) == 0 && st.fn == nil
 }
 
 func loadStructType(t reflect.Type) (st structType) {
@@ -79,16 +175,12 @@ func loadStructType(t reflect.Type) (st structType) {
 			}
 
 			if elem.Kind() == reflect.Struct {
-				fst := loadStructType(elem)
-
-				if len(fst.PointerFields) == 0 {
+				if fst := loadStructType(elem); fst.CanShadowCopy() {
 					continue
 				}
 			}
 		case reflect.Struct:
-			fst := loadStructType(ft)
-
-			if len(fst.PointerFields) == 0 {
+			if fst := loadStructType(ft); fst.CanShadowCopy() {
 				continue
 			}
 		}
@@ -125,14 +217,6 @@ func isScalar(k reflect.Kind) bool {
 
 	return false
 }
-
-type baitType struct{}
-
-func (baitType) Foo() {}
-
-var (
-	baitMethodValue = reflect.ValueOf(baitType{}).MethodByName("Foo")
-)
 
 func copyScalarValue(src reflect.Value) reflect.Value {
 	if src.CanInterface() {
@@ -204,9 +288,21 @@ var typeOfInterface = reflect.TypeOf((*interface{})(nil)).Elem()
 // Don't use it unless we have no choice, e.g. copying func in some edge cases.
 func forceClearROFlag(v reflect.Value) reflect.Value {
 	var i interface{}
+	canAddr := v.CanAddr()
+
+	// Save flagAddr.
+	if canAddr {
+		v = v.Addr()
+	}
 
 	v = v.Convert(typeOfInterface)
 	nv := reflect.ValueOf(&i)
 	*(*[2]uintptr)(unsafe.Pointer(nv.Pointer())) = v.InterfaceData()
-	return nv.Elem().Elem()
+	cleared := nv.Elem().Elem()
+
+	if canAddr {
+		cleared = cleared.Elem()
+	}
+
+	return cleared
 }

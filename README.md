@@ -8,7 +8,7 @@
 Package `clone` provides functions to deep clone any Go data.
 It also provides a wrapper to protect a pointer from any unexpected mutation.
 
-`Clone`/`Slowly` can clone unexported fields of any struct. Use this feature wisely.
+`Clone`/`Slowly` can clone unexported fields and "no-copy" structs as well. Use this feature wisely.
 
 ## Install
 
@@ -78,6 +78,31 @@ I will update the default.
 
 If there is any custom type should be considered as scalar, call `MarkAsScalar` to mark it manually. See [MarkAsScalar sample code](https://godoc.org/github.com/huandu/go-clone#example-MarkAsScalar) for more details.
 
+### Clone "no-copy" structs defined in `sync` and `sync/atomic`
+
+There are some "no-copy" types like `sync.Mutex`, `atomic.Value`, etc.
+They cannot be cloned by copying all fields one by one, but we can alloc a new zero value and call methods to do proper initialization.
+
+Currently, following "no-copy" types can be cloned properly.
+
+- `sync.Mutex`: Cloned value is a newly allocated zero mutex.
+- `sync.RWMutex`: Cloned value is a newly allocated zero mutex.
+- `sync.WaitGroup`: Cloned value is a newly allocated zero wait group.
+- `*sync.Cond`: Cloned value is a cond with a newly allocated zero lock.
+- `sync.Pool`: Cloned value is an empty pool with the same `New` function.
+- `sync.Map`: Cloned value is a sync map with cloned key/value pairs.
+- `sync.Once`: Cloned value is a once type with the same done flag.
+- `atomic.Value`: Cloned value is a new atomic value with the same value.
+
+If there is any type defined in built-in package should be considered as "no-copy" types, please open new issue to let me know.
+I will update the default.
+
+### SSet custom clone function
+
+If default clone strategy doesn't work for some custom types, we can call `SetCustomFunc` to clone it manually.
+
+See [SetCustomFunc sample code](https://godoc.org/github.com/huandu/go-clone#example-SetCustomFunc) for more details.
+
 ### `Wrap`, `Unwrap` and `Undo`
 
 Package `clone` provides `Wrap`/`Unwrap` functions to protect a pointer value from any unexpected mutation.
@@ -121,23 +146,17 @@ Here is the performance data running on my MacBook Pro.
 MacBook Pro (15-inch, 2019)
 Processor: 2.6 GHz Intel Core i7
 
-go 1.13.7
+go 1.15.8
 goos: darwin
 goarch: amd64
 pkg: github.com/huandu/go-clone
 
-BenchmarkSimpleClone-12         10254127           108 ns/op         32 B/op           1 allocs/op
-BenchmarkComplexClone-12          667335          1831 ns/op       1472 B/op          22 allocs/op
-BenchmarkUnwrap-12              13315618          91.2 ns/op          0 B/op           0 allocs/op
-BenchmarkSimpleWrap-12           5119616           238 ns/op         48 B/op           1 allocs/op
-BenchmarkComplexWrap-12          1000000          1158 ns/op        688 B/op          13 allocs/op
+BenchmarkSimpleClone-12          8325153               137 ns/op              32 B/op          1 allocs/op
+BenchmarkComplexClone-12          540330              2190 ns/op            1488 B/op         24 allocs/op
+BenchmarkUnwrap-12              12075483                96.8 ns/op             0 B/op          0 allocs/op
+BenchmarkSimpleWrap-12           3233422               373 ns/op              80 B/op          2 allocs/op
+BenchmarkComplexWrap-12           757730              1498 ns/op             752 B/op         16 allocs/op
 ```
-
-## Similar packages
-
-- Package [encoding/gob](https://golang.org/pkg/encoding/gob/): Gob encoder/decoder can be used to clone Go data. However, it's extremely slow.
-- Package [github.com/jinzhu/copier](https://github.com/jinzhu/copier): Copy data by field name. It doesn't work with values containing pointer cycles.
-- Package [github.com/ulule/deepcopier](https://github.com/ulule/deepcopier): Another copier.
 
 ## License
 

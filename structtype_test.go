@@ -1,8 +1,12 @@
 package clone
 
 import (
+	"fmt"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/huandu/go-assert"
@@ -111,4 +115,130 @@ func TestCopyScalarValue(t *testing.T) {
 	cloned := Clone(st).(*MapKeys)
 
 	a.Equal(st, cloned)
+}
+
+type noCopyValues struct {
+	syncMutex     sync.Mutex
+	syncRWMutex   sync.RWMutex
+	syncWaitGroup sync.WaitGroup
+	syncCond      *sync.Cond
+	syncPool      sync.Pool
+	syncMap       sync.Map
+	syncOnce      sync.Once
+	atomicValue   atomic.Value
+}
+
+func TestCloneNoCopyValues(t *testing.T) {
+	a := assert.New(t)
+	v := &noCopyValues{
+		syncCond: sync.NewCond(func() *sync.Mutex {
+			return &sync.Mutex{}
+		}()),
+		syncPool: sync.Pool{
+			New: func() interface{} {
+				return "pool"
+			},
+		},
+	}
+
+	v.syncMutex.Lock()
+	defer v.syncMutex.Unlock()
+	v.syncRWMutex.RLock()
+	defer v.syncRWMutex.RUnlock()
+	v.syncWaitGroup.Add(1)
+	defer v.syncWaitGroup.Done()
+	v.syncCond.L.Lock()
+	defer v.syncCond.L.Unlock()
+	poolValue := v.syncPool.Get()
+	v.syncPool.Put(poolValue)
+	v.syncMap.Store("foo", "bar")
+	v.syncOnce.Do(func() {})
+	v.atomicValue.Store("value")
+
+	cloned := Clone(v).(*noCopyValues)
+	done := make(chan bool, 1)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	a.Run("race", func(t *testing.T) {
+		a := assert.New(t)
+
+		cloned.syncMutex.Lock()
+		cloned.syncMutex.Unlock()
+
+		cloned.syncRWMutex.RLock()
+		cloned.syncRWMutex.RUnlock()
+
+		cloned.syncWaitGroup.Add(1)
+		cloned.syncWaitGroup.Done()
+		cloned.syncWaitGroup.Wait()
+
+		cloned.syncCond.L.Lock()
+		cloned.syncCond.L.Unlock()
+
+		poolValue := cloned.syncPool.Get()
+		a.Equal(poolValue, "pool")
+
+		mapValue, ok := cloned.syncMap.Load("foo")
+		a.Equal(mapValue, "bar")
+		a.Assert(ok)
+
+		onceValueShouldBeTrue := true
+		cloned.syncOnce.Do(func() {
+			onceValueShouldBeTrue = false
+		})
+		a.Assert(onceValueShouldBeTrue)
+
+		value := cloned.atomicValue.Load()
+		a.Equal(value, "value")
+
+		done <- true
+	})
+
+	select {
+	case <-done:
+	case <-ticker.C:
+		a.Fatalf("unexpected lock is detected.")
+	}
+}
+
+func ExampleSetCustomFunc() {
+	type MyStruct struct {
+		Data []interface{}
+	}
+
+	// Filter nil values in Data when cloning old value.
+	SetCustomFunc(reflect.TypeOf(MyStruct{}), func(old, new reflect.Value) {
+		var value MyStruct
+
+		// The old is guaranteed to be a MyStruct.
+		data := old.FieldByName("Data")
+		l := data.Len()
+
+		for i := 0; i < l; i++ {
+			v := data.Index(i)
+
+			if v.IsNil() {
+				continue
+			}
+
+			n := Clone(v.Interface())
+			value.Data = append(value.Data, n)
+		}
+
+		// The new is a zero value of MySlice.
+		// Set new to slice to return value to outside.
+		new.Set(reflect.ValueOf(value))
+	})
+
+	slice := &MyStruct{
+		Data: []interface{}{
+			"abc", nil, 123, nil,
+		},
+	}
+	cloned := Clone(slice).(*MyStruct)
+	fmt.Println(cloned.Data)
+
+	// Output:
+	// [abc 123]
 }

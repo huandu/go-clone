@@ -17,16 +17,16 @@ import (
 // e.g. v has a pointer points to v itself.
 // If there is a pointer cycle, use Slowly instead.
 //
-// In the most cases, Clone allocates new memory space for deep clone,
-// instead of all scalar types and following special values.
+// Clone allocates memory and deeply copies values inside v in depth-first sequence.
+// There are a few special rules for following types.
 //
-//     * scalar types: all number-like types are copied by value.
-//     * func: Copied by value as func is immutable at runtime.
+//     * Scalar types: all number-like types are copied by value.
+//     * func: Copied by value as func is an opaque pointer at runtime.
 //     * string: Copied by value as string is immutable by design.
 //     * unsafe.Pointer: Copied by value as we don't know what's in it.
-//     * chan: A new empty chan is cloned without any data inside.
+//     * chan: A new empty chan is created as we cannot read data inside the old chan.
 //
-// Unlike many similar packages, Clone is able to clone unexported fields of any struct.
+// Unlike many other packages, Clone is able to clone unexported fields of any struct.
 // Use this feature wisely.
 func Clone(v interface{}) interface{} {
 	if v == nil {
@@ -104,9 +104,9 @@ func (state *cloneState) cloneArray(v reflect.Value) reflect.Value {
 	return dst.Elem()
 }
 
-func (state *cloneState) copyArray(src, dst reflect.Value) {
-	p := unsafe.Pointer(dst.Pointer()) // dst must be a Ptr.
-	dst = dst.Elem()
+func (state *cloneState) copyArray(src, nv reflect.Value) {
+	p := unsafe.Pointer(nv.Pointer()) // dst must be a Ptr.
+	dst := nv.Elem()
 	num := src.Len()
 
 	if isScalar(src.Type().Elem().Kind()) {
@@ -158,7 +158,9 @@ func (state *cloneState) cloneMap(v reflect.Value) reflect.Value {
 	}
 
 	for iter := mapIter(v); iter.Next(); {
-		nv.SetMapIndex(state.clone(iter.Key()), state.clone(iter.Value()))
+		key := state.clone(iter.Key())
+		value := state.clone(iter.Value())
+		nv.SetMapIndex(key, value)
 	}
 
 	return nv
@@ -201,7 +203,9 @@ func (state *cloneState) clonePtr(v reflect.Value) reflect.Value {
 		}
 	}
 
-	elemType := t.Elem()
+	src := v.Elem()
+	elemType := src.Type()
+	elemKind := src.Kind()
 	nv := reflect.New(elemType)
 
 	if state != nil {
@@ -212,9 +216,7 @@ func (state *cloneState) clonePtr(v reflect.Value) reflect.Value {
 		state.visited[vst] = nv
 	}
 
-	src := v.Elem()
-
-	switch elemType.Kind() {
+	switch elemKind {
 	case reflect.Struct:
 		state.copyStruct(src, nv)
 	case reflect.Array:
@@ -292,12 +294,12 @@ func (state *cloneState) cloneStruct(v reflect.Value) reflect.Value {
 	return nv.Elem()
 }
 
-func (state *cloneState) copyStruct(src, dst reflect.Value) {
-	ptr := unsafe.Pointer(dst.Pointer()) // dst must be a Ptr.
-	dst = dst.Elem()
-	t := dst.Type()
+func (state *cloneState) copyStruct(src, nv reflect.Value) {
+	t := src.Type()
 	st := loadStructType(t)
-	shadowCopy(src, ptr)
+	ptr := unsafe.Pointer(nv.Pointer())
+
+	st.Copy(src, nv)
 
 	// If the struct type is a scalar type, a.k.a type without any pointer,
 	// there is no need to iterate over fields.

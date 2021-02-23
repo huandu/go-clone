@@ -77,13 +77,7 @@ func Wrap(v interface{}) interface{} {
 
 	// Equivalent code: wrapper.T = Clone(v)
 	field := wrapper.Field(0)
-
-	if t.Kind() == reflect.Struct {
-		// Avoid 1 alloc.
-		noState.copyStruct(elem, field.Addr())
-	} else {
-		field.Set(noState.clone(elem))
-	}
+	field.Set(noState.clone(elem))
 
 	// Equivalent code: wrapper.Checksum = makeChecksum(v)
 	checksumPtr := unsafe.Pointer((uintptr(wrapperPtr) + t.Size()))
