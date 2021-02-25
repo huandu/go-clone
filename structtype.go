@@ -291,11 +291,12 @@ var typeOfInterface = reflect.TypeOf((*interface{})(nil)).Elem()
 // Don't use it unless we have no choice, e.g. copying func in some edge cases.
 func forceClearROFlag(v reflect.Value) reflect.Value {
 	var i interface{}
-	canAddr := v.CanAddr()
+	indirect := 0
 
 	// Save flagAddr.
-	if canAddr {
+	for v.CanAddr() {
 		v = v.Addr()
+		indirect++
 	}
 
 	v = v.Convert(typeOfInterface)
@@ -303,8 +304,9 @@ func forceClearROFlag(v reflect.Value) reflect.Value {
 	*(*[2]uintptr)(unsafe.Pointer(nv.Pointer())) = v.InterfaceData()
 	cleared := nv.Elem().Elem()
 
-	if canAddr {
+	for indirect > 0 {
 		cleared = cleared.Elem()
+		indirect--
 	}
 
 	return cleared
