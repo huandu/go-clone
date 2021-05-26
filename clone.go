@@ -7,7 +7,6 @@ package clone
 
 import (
 	"fmt"
-	"math"
 	"reflect"
 	"unsafe"
 )
@@ -277,7 +276,7 @@ func (state *cloneState) cloneSlice(v reflect.Value) reflect.Value {
 		sz := int(t.Elem().Size())
 		l := num * sz
 		cc := c * sz
-		copy((*[math.MaxInt32]byte)(dst)[:l:cc], (*[math.MaxInt32]byte)(src)[:l:cc])
+		copy((*[maxByteSize]byte)(dst)[:l:cc], (*[maxByteSize]byte)(src)[:l:cc])
 	} else {
 		for i := 0; i < num; i++ {
 			nv.Index(i).Set(state.clone(v.Index(i)))
@@ -387,7 +386,7 @@ func shadowCopy(src reflect.Value, p unsafe.Pointer) {
 		if src.CanAddr() {
 			srcPtr := unsafe.Pointer(src.UnsafeAddr())
 			sz := t.Size()
-			copy((*[math.MaxInt32]byte)(p)[:sz:sz], (*[math.MaxInt32]byte)(srcPtr)[:sz:sz])
+			copy((*[maxByteSize]byte)(p)[:sz:sz], (*[maxByteSize]byte)(srcPtr)[:sz:sz])
 			return
 		}
 
@@ -433,7 +432,7 @@ func shadowCopy(src reflect.Value, p unsafe.Pointer) {
 		if src.CanAddr() {
 			srcPtr := unsafe.Pointer(src.UnsafeAddr())
 			sz := t.Size()
-			copy((*[math.MaxInt32]byte)(p)[:sz:sz], (*[math.MaxInt32]byte)(srcPtr)[:sz:sz])
+			copy((*[maxByteSize]byte)(p)[:sz:sz], (*[maxByteSize]byte)(srcPtr)[:sz:sz])
 			return
 		}
 
