@@ -76,7 +76,23 @@ Currently, following types are marked as scalar by default.
 If there is any type defined in built-in package should be considered as scalar, please open new issue to let me know.
 I will update the default.
 
-If there is any custom type should be considered as scalar, call `MarkAsScalar` to mark it manually. See [MarkAsScalar sample code](https://godoc.org/github.com/huandu/go-clone#example-MarkAsScalar) for more details.
+If there is any custom type should be considered as scalar, call `MarkAsScalar` to mark it manually. See [MarkAsScalar sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-MarkAsScalar) for more details.
+
+### Mark pointer type as opaque
+
+Some pointer values are used as enumerable const values.
+
+A well-known case is `elliptic.Curve`. In package `crypto/tls`, curve type of a certificate is checked by comparing values to pre-defined curve values, e.g. `elliptic.P521()`. In this case, the curve values, which are pointers or structs, cannot be cloned deeply.
+
+Currently, following types are marked as scalar by default.
+
+- `elliptic.Curve`, which is `*elliptic.CurveParam` or `elliptic.p256Curve`.
+- `reflect.Type`, which is `*reflect.rtype` defined in `runtime`.
+
+If there is any pointer type defined in built-in package should be considered as opaque, please open new issue to let me know.
+I will update the default.
+
+If there is any custom pointer type should be considered as opaque, call `MarkAsOpaquePointer` to mark it manually. See [MarkAsOpaquePointer sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-MarkAsOpaquePointer) for more details.
 
 ### Clone "no-copy" types defined in `sync` and `sync/atomic`
 
@@ -102,7 +118,7 @@ I will update the default.
 If default clone strategy doesn't work for a struct type, we can call `SetCustomFunc` to implement custom clone logic.
 `Clone` and `Slowly` can be used in custom clone functions.
 
-See [SetCustomFunc sample code](https://godoc.org/github.com/huandu/go-clone#example-SetCustomFunc) for more details.
+See [SetCustomFunc sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-SetCustomFunc) for more details.
 
 ### `Wrap`, `Unwrap` and `Undo`
 

@@ -165,14 +165,6 @@ func (state *cloneState) cloneMap(v reflect.Value) reflect.Value {
 	return nv
 }
 
-var (
-	// Special case for reflect.Type (actually *reflect.rtype):
-	// The *reflect.rtype should not be copied as it is immutable and
-	// may point to a variable that actual type is not reflect.rtype,
-	// e.g. *reflect.arrayType or *reflect.chanType.
-	typeOfReflectType = reflect.TypeOf(reflect.TypeOf(0))
-)
-
 func (state *cloneState) clonePtr(v reflect.Value) reflect.Value {
 	if v.IsNil() {
 		return reflect.Zero(v.Type())
@@ -180,7 +172,7 @@ func (state *cloneState) clonePtr(v reflect.Value) reflect.Value {
 
 	t := v.Type()
 
-	if t == typeOfReflectType {
+	if isOpaquePointer(t) {
 		if v.CanInterface() {
 			return v
 		}

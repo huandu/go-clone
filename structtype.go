@@ -4,6 +4,7 @@
 package clone
 
 import (
+	"crypto/elliptic"
 	"fmt"
 	"reflect"
 	"sync"
@@ -13,13 +14,29 @@ import (
 )
 
 var (
-	cachedStructTypes sync.Map
+	cachedStructTypes  sync.Map
+	cachedPointerTypes sync.Map
 )
 
 func init() {
 	// Some well-known scalar-like structs.
 	MarkAsScalar(reflect.TypeOf(time.Time{}))
 	MarkAsScalar(reflect.TypeOf(reflect.Value{}))
+
+	// Special case for elliptic.Curve which is used by TLS ECC certificate.
+	// Package crypto/tls uses elliptic.Curve as enum values
+	// so that they should be treated as opaque pointers.
+	//
+	// As elliptic.Curve is an interface, it can be *elliptic.CurveParam or elliptic.p256Curve.
+	p224 := elliptic.P224()
+	MarkAsScalar(reflect.TypeOf(p224))
+	MarkAsOpaquePointer(reflect.TypeOf(&elliptic.CurveParams{}))
+
+	// Special case for reflect.Type (actually *reflect.rtype):
+	// The *reflect.rtype should not be copied as it is immutable and
+	// may point to a variable that actual type is not reflect.rtype,
+	// e.g. *reflect.arrayType or *reflect.chanType.
+	MarkAsOpaquePointer(reflect.TypeOf(reflect.TypeOf(0)))
 
 	// Some well-known no-copy structs.
 	//
@@ -87,6 +104,14 @@ func MarkAsScalar(t reflect.Type) {
 	}
 
 	cachedStructTypes.Store(t, structType{})
+}
+
+func MarkAsOpaquePointer(t reflect.Type) {
+	if t.Kind() != reflect.Ptr {
+		return
+	}
+
+	cachedPointerTypes.Store(t, struct{}{})
 }
 
 // Func is a custom func to clone value from old to new.
@@ -219,6 +244,11 @@ func isScalar(k reflect.Kind) bool {
 	}
 
 	return false
+}
+
+func isOpaquePointer(t reflect.Type) (ok bool) {
+	_, ok = cachedPointerTypes.Load(t)
+	return
 }
 
 func copyScalarValue(src reflect.Value) reflect.Value {

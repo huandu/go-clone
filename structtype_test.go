@@ -4,7 +4,7 @@
 package clone
 
 import (
-	"fmt"
+	"crypto/elliptic"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -205,39 +205,33 @@ func TestCloneNoCopyValues(t *testing.T) {
 	}
 }
 
-func ExampleSetCustomFunc() {
-	type MyStruct struct {
-		Data []interface{}
+func TestCloneCurveAsScalar(t *testing.T) {
+	a := assert.New(t)
+	curves := []elliptic.Curve{elliptic.P224(), elliptic.P256(), elliptic.P384(), elliptic.P521()}
+	cloned := Clone(curves).([]elliptic.Curve)
+
+	for i, curve := range curves {
+		c := cloned[i]
+		a.Assert(curve == c)
 	}
+}
 
-	// Filter nil values in Data when cloning old value.
-	SetCustomFunc(reflect.TypeOf(MyStruct{}), func(old, new reflect.Value) {
-		// The new is a zero value of MyStruct.
-		// We can get its address to update it.
-		value := new.Addr().Interface().(*MyStruct)
+type testOpaquePointer struct {
+	foo int
+}
 
-		// The old is guaranteed to be a MyStruct.
-		// As old.CanAddr() may be false, we'd better to read Data field directly.
-		data := old.FieldByName("Data").Interface().([]interface{})
+func TestMarkAsOpaquePointer(t *testing.T) {
+	a := assert.New(t)
 
-		for _, v := range data {
-			if v == nil {
-				continue
-			}
+	// Mark *testOpaquePointer as opaque pointer.
+	MarkAsOpaquePointer(reflect.TypeOf(&testOpaquePointer{}))
 
-			n := Clone(v)
-			value.Data = append(value.Data, n)
-		}
-	})
+	// No-op if set a struct type as opaque.
+	MarkAsOpaquePointer(reflect.TypeOf(testOpaquePointer{}))
 
-	slice := &MyStruct{
-		Data: []interface{}{
-			"abc", nil, 123, nil,
-		},
-	}
-	cloned := Clone(slice).(*MyStruct)
-	fmt.Println(cloned.Data)
+	opaque := &testOpaquePointer{}
+	cloned := Clone(&opaque).(**testOpaquePointer)
 
-	// Output:
-	// [abc 123]
+	a.Assert(&opaque != cloned)
+	a.Assert(opaque == *cloned)
 }
