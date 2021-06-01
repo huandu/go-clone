@@ -106,6 +106,12 @@ func MarkAsScalar(t reflect.Type) {
 	cachedStructTypes.Store(t, structType{})
 }
 
+// MarkAsOpaquePointer marks t as a opaque pointer type so that all clone methods will copy t by value.
+// If t is not a pointer, MarkAsOpaquePointer ignores t.
+//
+// Here is a list of types marked as opaque pointers by default:
+//     * `elliptic.Curve`, which is `*elliptic.CurveParam` or `elliptic.p256Curve`;
+//     * `reflect.Type`, which is `*reflect.rtype` defined in `runtime`.
 func MarkAsOpaquePointer(t reflect.Type) {
 	if t.Kind() != reflect.Ptr {
 		return
