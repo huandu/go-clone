@@ -36,7 +36,9 @@ func ExampleMarkAsOpaquePointer() {
 
 	MarkAsOpaquePointer(reflect.TypeOf(new(OpaquePointerType)))
 
-	opaque := &OpaquePointerType{}
+	opaque := &OpaquePointerType{
+		foo: 123,
+	}
 	cloned := Clone(opaque).(*OpaquePointerType)
 
 	// cloned is a shadow copy of opaque.

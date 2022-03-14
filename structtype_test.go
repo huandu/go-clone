@@ -87,8 +87,8 @@ type MapKeys struct {
 	mc128    map[complex128]interface{}
 	miface   map[interface{}]interface{}
 	mis      map[Simple]interface{}
-	misp     map[*Simple]interface{}
-	munsafe  map[unsafe.Pointer]interface{}
+	// misp     map[*Simple]interface{}
+	munsafe map[unsafe.Pointer]interface{}
 }
 
 func TestCopyScalarValue(t *testing.T) {
@@ -167,9 +167,11 @@ func TestCloneNoCopyValues(t *testing.T) {
 		a := assert.New(t)
 
 		cloned.syncMutex.Lock()
+		_ = 0
 		cloned.syncMutex.Unlock()
 
 		cloned.syncRWMutex.RLock()
+		_ = 0
 		cloned.syncRWMutex.RUnlock()
 
 		cloned.syncWaitGroup.Add(1)
@@ -177,6 +179,7 @@ func TestCloneNoCopyValues(t *testing.T) {
 		cloned.syncWaitGroup.Wait()
 
 		cloned.syncCond.L.Lock()
+		_ = 0
 		cloned.syncCond.L.Unlock()
 
 		poolValue := cloned.syncPool.Get()
@@ -229,7 +232,9 @@ func TestMarkAsOpaquePointer(t *testing.T) {
 	// No-op if set a struct type as opaque.
 	MarkAsOpaquePointer(reflect.TypeOf(testOpaquePointer{}))
 
-	opaque := &testOpaquePointer{}
+	opaque := &testOpaquePointer{
+		foo: 1234,
+	}
 	cloned := Clone(&opaque).(**testOpaquePointer)
 
 	a.Assert(&opaque != cloned)

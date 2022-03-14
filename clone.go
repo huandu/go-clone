@@ -92,6 +92,12 @@ func (state *cloneState) clone(v reflect.Value) reflect.Value {
 		return state.cloneSlice(v)
 	case reflect.Struct:
 		return state.cloneStruct(v)
+	case reflect.String:
+		// A string value can be copied as a scalar,
+		// but the string type cannot be marked as scalar.
+		// Any struct containing a string field must be deeply cloned
+		// to make GC write barrier work correctly during GC mark phase.
+		return copyScalarValue(v)
 	default:
 		panic(fmt.Errorf("go-clone: <bug> unsupported type `%v`", v.Type()))
 	}
@@ -337,6 +343,8 @@ func (state *cloneState) copyStruct(src, nv reflect.Value) {
 	}
 }
 
+var typeOfString = reflect.TypeOf("")
+
 func shadowCopy(src reflect.Value, p unsafe.Pointer) {
 	switch src.Kind() {
 	case reflect.Bool:
@@ -404,7 +412,7 @@ func shadowCopy(src reflect.Value, p unsafe.Pointer) {
 		val := reflect.NewAt(t, p).Elem()
 		val.Set(src)
 	case reflect.Interface:
-		*((*[2]uintptr)(p)) = src.InterfaceData()
+		*((*interfaceData)(p)) = parseReflectValue(src)
 	case reflect.Map:
 		*((*uintptr)(p)) = src.Pointer()
 	case reflect.Ptr:
@@ -417,17 +425,10 @@ func shadowCopy(src reflect.Value, p unsafe.Pointer) {
 		}
 	case reflect.String:
 		s := src.String()
-		*(*stringHeader)(p) = *(*stringHeader)(unsafe.Pointer(&s))
+		val := reflect.NewAt(typeOfString, p).Elem()
+		val.SetString(s)
 	case reflect.Struct:
 		t := src.Type()
-
-		if src.CanAddr() {
-			srcPtr := unsafe.Pointer(src.UnsafeAddr())
-			sz := t.Size()
-			copy((*[maxByteSize]byte)(p)[:sz:sz], (*[maxByteSize]byte)(srcPtr)[:sz:sz])
-			return
-		}
-
 		val := reflect.NewAt(t, p).Elem()
 
 		if src.CanInterface() {

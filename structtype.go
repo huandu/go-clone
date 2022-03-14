@@ -106,7 +106,7 @@ func MarkAsScalar(t reflect.Type) {
 	cachedStructTypes.Store(t, structType{})
 }
 
-// MarkAsOpaquePointer marks t as a opaque pointer type so that all clone methods will copy t by value.
+// MarkAsOpaquePointer marks t as an opaque pointer so that all clone methods will copy t by value.
 // If t is not a pointer, MarkAsOpaquePointer ignores t.
 //
 // Here is a list of types marked as opaque pointers by default:
@@ -243,7 +243,7 @@ func isScalar(k reflect.Kind) bool {
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
 		reflect.Float32, reflect.Float64,
 		reflect.Complex64, reflect.Complex128,
-		reflect.String, reflect.Func,
+		reflect.Func,
 		reflect.UnsafePointer,
 		reflect.Invalid:
 		return true
@@ -337,7 +337,7 @@ func forceClearROFlag(v reflect.Value) reflect.Value {
 
 	v = v.Convert(typeOfInterface)
 	nv := reflect.ValueOf(&i)
-	*(*[2]uintptr)(unsafe.Pointer(nv.Pointer())) = v.InterfaceData()
+	*(*interfaceData)(unsafe.Pointer(nv.Pointer())) = parseReflectValue(v)
 	cleared := nv.Elem().Elem()
 
 	for indirect > 0 {

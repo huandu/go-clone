@@ -89,11 +89,6 @@ func Wrap(v interface{}) interface{} {
 	return field.Addr().Interface()
 }
 
-type checksum struct {
-	pw   uintptr
-	orig uintptr
-}
-
 func validateChecksum(t reflect.Type, ptr unsafe.Pointer) bool {
 	pw := uintptr(ptr)
 	orig := uintptr(getOrigin(t, ptr))

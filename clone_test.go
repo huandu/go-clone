@@ -202,9 +202,9 @@ type cycleComplex struct {
 	scalarSlice  []string
 	scalarStruct *reflect.Value
 
-	nilSlice []*cycleElement
-	nilMap   map[*cycleElement]*cycleElement
-	nilIface interface{}
+	_ []*cycleElement
+	_ map[*cycleElement]*cycleElement
+	_ interface{}
 
 	array          [2]*cycleElement
 	slice          []*cycleElement
@@ -512,10 +512,10 @@ type insider struct {
 	method        func([]byte) (int, error)
 	iface         io.Writer
 	ifaceScalar   io.Writer
-	nilIface      interface{}
+	_             interface{}
 	m             map[string]interface{}
 	ptr           *Unexported
-	nilPtr        *Unexported
+	_             *Unexported
 	slice         []*Unexported
 	st            Simple
 	unsafePointer unsafe.Pointer
