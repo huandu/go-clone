@@ -92,12 +92,6 @@ func (state *cloneState) clone(v reflect.Value) reflect.Value {
 		return state.cloneSlice(v)
 	case reflect.Struct:
 		return state.cloneStruct(v)
-	case reflect.String:
-		// A string value can be copied as a scalar,
-		// but the string type cannot be marked as scalar.
-		// Any struct containing a string field must be deeply cloned
-		// to make GC write barrier work correctly during GC mark phase.
-		return copyScalarValue(v)
 	default:
 		panic(fmt.Errorf("go-clone: <bug> unsupported type `%v`", v.Type()))
 	}
