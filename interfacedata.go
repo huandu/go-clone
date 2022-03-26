@@ -5,14 +5,18 @@ import (
 	"unsafe"
 )
 
-const sizeOfInterface = unsafe.Sizeof((interface{})(0))
+const sizeOfPointers = unsafe.Sizeof((interface{})(0)) / unsafe.Sizeof(uintptr(0))
 
 // interfaceData is the underlying data of an interface.
 // As the reflect.Value's interfaceData method is deprecated,
 // it may be broken in any Go release.
 // It's better to create a custom to hold the data.
+//
+// The type of interfaceData fields must be poniters.
+// It's a way to cheat Go compile to generate calls to write barrier
+// when copying interfaces.
 type interfaceData struct {
-	_ [sizeOfInterface]byte
+	_ [sizeOfPointers]unsafe.Pointer
 }
 
 var reflectValuePtrOffset uintptr
