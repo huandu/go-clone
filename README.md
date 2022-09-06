@@ -1,12 +1,13 @@
-# go-clone: Deep clone any Go data
+# go-clone: Clone any Go data structure deeply and thoroughly
 
 [![Go](https://github.com/huandu/go-clone/workflows/Go/badge.svg)](https://github.com/huandu/go-clone/actions)
 [![Go Doc](https://godoc.org/github.com/huandu/go-clone?status.svg)](https://pkg.go.dev/github.com/huandu/go-clone)
 [![Go Report](https://goreportcard.com/badge/github.com/huandu/go-clone)](https://goreportcard.com/report/github.com/huandu/go-clone)
 [![Coverage Status](https://coveralls.io/repos/github/huandu/go-clone/badge.svg?branch=master)](https://coveralls.io/github/huandu/go-clone?branch=master)
 
-Package `clone` provides functions to deep clone any Go data.
-It also provides a wrapper to protect a pointer from any unexpected mutation.
+Package `clone` provides functions to deep clone any Go data. It also provides a wrapper to protect a pointer from any unexpected mutation.
+
+For users who use Go 1.18+, it's recommended to import `github.com/huandu/go-clone/generic` for generic APIs.
 
 `Clone`/`Slowly` can clone unexported fields and "no-copy" structs as well. Use this feature wisely.
 
@@ -59,6 +60,30 @@ for i := 0; i < 10; i++ {
     node = node.Next
 }
 ```
+
+### Generic APIs
+
+Starting from go1.18, Go started to support generic. With generic syntax, `Clone`/`Slowly` and other APIs can be called much cleaner like following.
+
+```go
+import "github.com/huandu/go-clone/generic"
+
+type MyType struct {
+    Foo string
+}
+
+original := &MyType{
+    Foo: "bar",
+}
+
+// The type of cloned is *MyType instead of interface{}.
+cloned := Clone(original)
+println(cloned.Foo) // Output: bar
+```
+
+It's required to update minimal Go version to 1.18 to opt-in generic syntax. It may not be a wise choice to update this package's `go.mod` and drop so many old Go compilers for such syntax candy. Therefore, I decide to create a new standalone package `github.com/huandu/go-clone/generic` to provide APIs with generic syntax.
+
+For new users who use Go 1.18+, the generic package is preferred and recommended.
 
 ### Mark struct type as scalar
 
@@ -127,25 +152,12 @@ As there is no way to predefine a custom clone function for generic type `atomic
 Suppose we instantiate `atomic.Pointer[T]` with type `MyType1` and `MyType2` in a project, and then we can register custom clone functions like following.
 
 ```go
-// registerAtomicPointer registers a custom clone function for atomic.Pointer[T].
-func registerAtomicPointer[T any]() {
-    clone.SetCustomFunc(reflect.TypeOf(atomic.Pointer[T]{}), func(old, new reflect.Value) {
-        if !old.CanAddr() {
-            return
-        }
-
-        // Clone value inside atomic.Pointer[T].
-        oldValue := old.Addr().Interface().(*atomic.Pointer[T])
-        newValue := new.Addr().Interface().(*atomic.Pointer[T])
-        v := oldValue.Load()
-        newValue.Store(v)
-    })
-}
+import "github.com/huandu/go-clone/generic"
 
 func init() {
     // Register all instantiated atomic.Pointer[T] types in this project.
-    registerAtomicPointer[MyType1]()
-    registerAtomicPointer[MyType2]()
+    clone.RegisterAtomicPointer[MyType1]()
+    clone.RegisterAtomicPointer[MyType2]()
 }
 ```
 
@@ -198,10 +210,10 @@ goarch: amd64
 pkg: github.com/huandu/go-clone
 cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
 BenchmarkSimpleClone-12          7903873               142.9 ns/op            24 B/op          1 allocs/op
-BenchmarkComplexClone-12          590836              1755 ns/op            1488 B/op         21 allocs/op
-BenchmarkUnwrap-12              14988664                71.46 ns/op            0 B/op          0 allocs/op
+BenchmarkComplexClone-12          590836                1755 ns/op          1488 B/op         21 allocs/op
+BenchmarkUnwrap-12              14988664               71.46 ns/op             0 B/op          0 allocs/op
 BenchmarkSimpleWrap-12           3823450               304.4 ns/op            72 B/op          2 allocs/op
-BenchmarkComplexWrap-12           867642              1197 ns/op             736 B/op         15 allocs/op
+BenchmarkComplexWrap-12           867642                1197 ns/op           736 B/op         15 allocs/op
 ```
 
 ## License

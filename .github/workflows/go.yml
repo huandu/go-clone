@@ -26,6 +26,12 @@ jobs:
 
       - name: Test
         run: go test -v -coverprofile=covprofile.cov ./...
+      
+      - name: Test generic
+        run: |
+          cd generic
+          go test -v ./...
+          cd ..
 
       - name: Send coverage
         env:
