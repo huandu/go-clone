@@ -28,9 +28,17 @@ func init() {
 	// so that they should be treated as opaque pointers.
 	//
 	// As elliptic.Curve is an interface, it can be *elliptic.CurveParam or elliptic.p256Curve.
-	p224 := elliptic.P224()
-	MarkAsScalar(reflect.TypeOf(p224))
 	MarkAsOpaquePointer(reflect.TypeOf(&elliptic.CurveParams{}))
+	curves := []elliptic.Curve{
+		elliptic.P224(),
+		elliptic.P256(),
+		elliptic.P384(),
+		elliptic.P521(),
+	}
+
+	for _, curve := range curves {
+		MarkAsOpaquePointer(reflect.ValueOf(curve).Type())
+	}
 
 	// Special case for reflect.Type (actually *reflect.rtype):
 	// The *reflect.rtype should not be copied as it is immutable and

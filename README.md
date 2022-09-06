@@ -108,17 +108,46 @@ Currently, all "no-copy" types defined in `sync` and `sync/atomic` can be cloned
 - `sync.Pool`: Cloned value is an empty pool with the same `New` function.
 - `sync.Map`: Cloned value is a sync map with cloned key/value pairs.
 - `sync.Once`: Cloned value is a once type with the same done flag.
-- `atomic.Value`: Cloned value is a new atomic value with the same value.
+- `atomic.Value`/`atomic.Bool`/`atomic.Int32`/`atomic.Int64`/`atomic.Uint32`/`atomic.Uint64`/`atomic.Uintptr`: Cloned value is a new atomic value with the same value.
 
 If there is any type defined in built-in package should be considered as "no-copy" types, please open new issue to let me know.
 I will update the default.
 
 ### Set custom clone functions
 
-If default clone strategy doesn't work for a struct type, we can call `SetCustomFunc` to implement custom clone logic.
+If default clone strategy doesn't work for a struct type, we can call `SetCustomFunc` to register a custom clone function.
 `Clone` and `Slowly` can be used in custom clone functions.
 
 See [SetCustomFunc sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-SetCustomFunc) for more details.
+
+### Clone `atomic.Pointer[T]`
+
+As there is no way to predefine a custom clone function for generic type `atomic.Pointer[T]`, cloning such atomic type is not supported by default. If we want to support it, we need to register a custom clone function manually.
+
+Suppose we instantiate `atomic.Pointer[T]` with type `MyType1` and `MyType2` in a project, and then we can register custom clone functions like following.
+
+```go
+// registerAtomicPointer registers a custom clone function for atomic.Pointer[T].
+func registerAtomicPointer[T any]() {
+    clone.SetCustomFunc(reflect.TypeOf(atomic.Pointer[T]{}), func(old, new reflect.Value) {
+        if !old.CanAddr() {
+            return
+        }
+
+        // Clone value inside atomic.Pointer[T].
+        oldValue := old.Addr().Interface().(*atomic.Pointer[T])
+        newValue := new.Addr().Interface().(*atomic.Pointer[T])
+        v := oldValue.Load()
+        newValue.Store(v)
+    })
+}
+
+func init() {
+    // Register all instantiated atomic.Pointer[T] types in this project.
+    registerAtomicPointer[MyType1]()
+    registerAtomicPointer[MyType2]()
+}
+```
 
 ### `Wrap`, `Unwrap` and `Undo`
 
