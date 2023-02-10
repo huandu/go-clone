@@ -69,7 +69,7 @@ func Wrap(v interface{}) interface{} {
 	}
 
 	wrapperType := cache.(reflect.Type)
-	pw := reflect.New(wrapperType)
+	pw := heapAllocator.New(wrapperType)
 
 	wrapperPtr := unsafe.Pointer(pw.Pointer())
 	wrapper := pw.Elem()

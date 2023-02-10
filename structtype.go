@@ -74,9 +74,9 @@ func init() {
 		oldMap := old.Addr().Interface().(*sync.Map)
 		newMap := new.Addr().Interface().(*sync.Map)
 		oldMap.Range(func(key, value interface{}) bool {
-			kVal := allocator.Clone(reflect.ValueOf(key))
-			vVal := allocator.Clone(reflect.ValueOf(value))
-			newMap.Store(kVal.Interface(), vVal.Interface())
+			k := clone(allocator, key)
+			v := clone(allocator, value)
+			newMap.Store(k, v)
 			return true
 		})
 	})
@@ -89,8 +89,8 @@ func init() {
 		oldValue := old.Addr().Interface().(*atomic.Value)
 		newValue := new.Addr().Interface().(*atomic.Value)
 		v := oldValue.Load()
-		val := allocator.Clone(reflect.ValueOf(v))
-		newValue.Store(val.Interface())
+		cloned := clone(allocator, v)
+		newValue.Store(cloned)
 	})
 }
 

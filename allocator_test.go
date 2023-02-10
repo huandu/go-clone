@@ -75,6 +75,7 @@ func TestAllocatorCloneSlowly(t *testing.T) {
 	a.Equal(data.Next.Next.Data, cloned.Next.Next.Data)
 	a.Equal(data.Next.Next.Next.Data, cloned.Next.Next.Next.Data)
 	a.Equal(data.Next.Next.Next.Next.Data, cloned.Next.Next.Next.Next.Data)
+	a.Assert(cloned.Next.Next.Next == cloned)
 
 	// Should allocate following value.
 	//     - allocator

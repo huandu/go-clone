@@ -15,7 +15,9 @@ func ExampleAllocator() {
 	type Foo struct {
 		Bar int
 	}
-	var typeOfFoo = reflect.TypeOf(Foo{})
+
+	typeOfFoo := reflect.TypeOf(Foo{})
+	poolUsed := 0 // For test only.
 
 	// A sync pool to allocate Foo.
 	p := &sync.Pool{
@@ -23,22 +25,20 @@ func ExampleAllocator() {
 			return &Foo{}
 		},
 	}
-	counter := 0
 
 	// Creates a custom allocator using p as pool.
 	allocator := NewAllocator(unsafe.Pointer(p), &AllocatorMethods{
 		New: func(pool unsafe.Pointer, t reflect.Type) reflect.Value {
 			// If t is Foo, allocate value from the sync pool p.
 			if t == typeOfFoo {
+				poolUsed++ // For test only.
+
 				p := (*sync.Pool)(pool)
 				v := p.Get()
 				runtime.SetFinalizer(v, func(v *Foo) {
 					*v = Foo{}
 					p.Put(v)
 				})
-
-				// Add counter for test. So we know whether this code was executed.
-				counter++
 
 				return reflect.ValueOf(v)
 			}
@@ -56,7 +56,7 @@ func ExampleAllocator() {
 	cloned := allocator.Clone(reflect.ValueOf(target)).Interface().([]*Foo)
 
 	fmt.Println(reflect.DeepEqual(target, cloned))
-	fmt.Println(counter)
+	fmt.Println(poolUsed)
 
 	// Output:
 	// true

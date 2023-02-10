@@ -11,7 +11,7 @@ import (
 
 var typeOfAllocator = reflect.TypeOf(Allocator{})
 
-// Allocator is a function to allocate memory.
+// Allocator is a utility type for memory allocation.
 type Allocator struct {
 	pool      unsafe.Pointer
 	new       func(pool unsafe.Pointer, t reflect.Type) reflect.Value
@@ -21,6 +21,7 @@ type Allocator struct {
 }
 
 // AllocatorMethods defines all methods required by allocator.
+// If any of these methods is nil, allocator will use default method which allocates memory from heap.
 type AllocatorMethods struct {
 	New       func(pool unsafe.Pointer, t reflect.Type) reflect.Value
 	MakeSlice func(pool unsafe.Pointer, t reflect.Type, len, cap int) reflect.Value
@@ -34,6 +35,8 @@ func FromHeap() *Allocator {
 }
 
 // NewAllocator creates an allocator which allocate memory from the pool.
+//
+// If methods.New is not nil, the allocator itself is created by calling methods.New.
 func NewAllocator(pool unsafe.Pointer, methods *AllocatorMethods) (allocator *Allocator) {
 	if methods.New == nil {
 		allocator = &Allocator{
@@ -97,7 +100,7 @@ func (a *Allocator) MakeChan(t reflect.Type, buffer int) reflect.Value {
 	return a.makeChan(a.pool, t, buffer)
 }
 
-// Clone recursively deep clone v to a new value with memory allocated from a.
+// Clone recursively deep clone val to a new value with memory allocated from a.
 func (a *Allocator) Clone(val reflect.Value) reflect.Value {
 	if !val.IsValid() {
 		return val
@@ -109,7 +112,7 @@ func (a *Allocator) Clone(val reflect.Value) reflect.Value {
 	return state.clone(val)
 }
 
-// CloneSlowly recursively deep clone v to a new value with memory allocated from a.
+// CloneSlowly recursively deep clone val to a new value with memory allocated from a.
 // It marks all cloned values internally, thus it can clone v with cycle pointer.
 func (a *Allocator) CloneSlowly(val reflect.Value) reflect.Value {
 	if !val.IsValid() {
