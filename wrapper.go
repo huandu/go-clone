@@ -24,14 +24,14 @@ var (
 //
 // The wrapper is a deep clone of v's value. It holds a shadow copy to v internally.
 //
-//     t := &T{Foo: 123}
-//     v := Wrap(t).(*T)               // v is a clone of t.
-//     reflect.DeepEqual(t, v) == true // v equals t.
-//     v.Foo = 456                     // v.Foo is changed, but t.Foo doesn't change.
-//     orig := Unwrap(v)               // Use `Unwrap` to discard wrapper and return original value, which is t.
-//     orig.(*T) == t                  // orig and t is exactly the same.
-//     Undo(v)                         // Use `Undo` to discard any change on v.
-//     v.Foo == t.Foo                  // Now, the value of v and t are the same again.
+//	t := &T{Foo: 123}
+//	v := Wrap(t).(*T)               // v is a clone of t.
+//	reflect.DeepEqual(t, v) == true // v equals t.
+//	v.Foo = 456                     // v.Foo is changed, but t.Foo doesn't change.
+//	orig := Unwrap(v)               // Use `Unwrap` to discard wrapper and return original value, which is t.
+//	orig.(*T) == t                  // orig and t is exactly the same.
+//	Undo(v)                         // Use `Undo` to discard any change on v.
+//	v.Foo == t.Foo                  // Now, the value of v and t are the same again.
 func Wrap(v interface{}) interface{} {
 	if v == nil {
 		return v
@@ -69,14 +69,14 @@ func Wrap(v interface{}) interface{} {
 	}
 
 	wrapperType := cache.(reflect.Type)
-	pw := reflect.New(wrapperType)
+	pw := heapAllocator.New(wrapperType)
 
 	wrapperPtr := unsafe.Pointer(pw.Pointer())
 	wrapper := pw.Elem()
 
 	// Equivalent code: wrapper.T = Clone(v)
 	field := wrapper.Field(0)
-	field.Set(noState.clone(elem))
+	field.Set(heapCloneState.clone(elem))
 
 	// Equivalent code: wrapper.Checksum = makeChecksum(v)
 	checksumPtr := unsafe.Pointer((uintptr(wrapperPtr) + t.Size()))
@@ -150,7 +150,7 @@ func Undo(v interface{}) {
 
 	origVal := origin(val)
 	elem := val.Elem()
-	elem.Set(noState.clone(origVal.Elem()))
+	elem.Set(heapCloneState.clone(origVal.Elem()))
 }
 
 func isWrapped(val reflect.Value) bool {

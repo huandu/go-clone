@@ -11,11 +11,14 @@ package clone
 
 import (
 	"reflect"
+	"unsafe"
 
 	"github.com/huandu/go-clone"
 )
 
 type Func = clone.Func
+type Allocator = clone.Allocator
+type AllocatorMethods = clone.AllocatorMethods
 
 func Clone[T any](t T) T {
 	return clone.Clone(t).(T)
@@ -47,4 +50,12 @@ func MarkAsScalar(t reflect.Type) {
 
 func SetCustomFunc(t reflect.Type, fn Func) {
 	clone.SetCustomFunc(t, fn)
+}
+
+func FromHeap() *Allocator {
+	return clone.FromHeap()
+}
+
+func NewAllocator(pool unsafe.Pointer, methods *AllocatorMethods) (allocator *Allocator) {
+	return clone.NewAllocator(pool, methods)
 }

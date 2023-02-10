@@ -11,7 +11,11 @@ import (
 	"unsafe"
 )
 
-// Clone recursively deep clone v to a new value.
+var heapCloneState = &cloneState{
+	allocator: heapAllocator,
+}
+
+// Clone recursively deep clone v to a new value in heap.
 // It assumes that there is no pointer cycle in v,
 // e.g. v has a pointer points to v itself.
 // If there is a pointer cycle, use Slowly instead.
@@ -19,49 +23,51 @@ import (
 // Clone allocates memory and deeply copies values inside v in depth-first sequence.
 // There are a few special rules for following types.
 //
-//     * Scalar types: all number-like types are copied by value.
-//     * func: Copied by value as func is an opaque pointer at runtime.
-//     * string: Copied by value as string is immutable by design.
-//     * unsafe.Pointer: Copied by value as we don't know what's in it.
-//     * chan: A new empty chan is created as we cannot read data inside the old chan.
+//   - Scalar types: all number-like types are copied by value.
+//   - func: Copied by value as func is an opaque pointer at runtime.
+//   - string: Copied by value as string is immutable by design.
+//   - unsafe.Pointer: Copied by value as we don't know what's in it.
+//   - chan: A new empty chan is created as we cannot read data inside the old chan.
 //
 // Unlike many other packages, Clone is able to clone unexported fields of any struct.
 // Use this feature wisely.
 func Clone(v interface{}) interface{} {
+	return clone(heapAllocator, v)
+}
+
+func clone(allocator *Allocator, v interface{}) interface{} {
 	if v == nil {
-		return v
+		return nil
 	}
 
 	val := reflect.ValueOf(v)
-	cloned := noState.clone(val)
+	cloned := allocator.Clone(val)
 	return cloned.Interface()
 }
 
-// Slowly recursively deep clone v to a new value.
+// Slowly recursively deep clone v to a new value in heap.
 // It marks all cloned values internally, thus it can clone v with cycle pointer.
 //
 // Slowly works exactly the same as Clone. See Clone doc for more details.
 func Slowly(v interface{}) interface{} {
+	return cloneSlowly(heapAllocator, v)
+}
+
+func cloneSlowly(allocator *Allocator, v interface{}) interface{} {
 	if v == nil {
-		return v
+		return nil
 	}
 
 	val := reflect.ValueOf(v)
-	state := &cloneState{
-		visited: visitMap{},
-		invalid: invalidPointers{},
-	}
-	cloned := state.clone(val)
-	state.fix(cloned)
+	cloned := allocator.CloneSlowly(val)
 	return cloned.Interface()
 }
 
 type cloneState struct {
-	visited visitMap
-	invalid invalidPointers
+	allocator *Allocator
+	visited   visitMap
+	invalid   invalidPointers
 }
-
-var noState *cloneState
 
 type visit struct {
 	p     uintptr
@@ -81,7 +87,7 @@ func (state *cloneState) clone(v reflect.Value) reflect.Value {
 	case reflect.Array:
 		return state.cloneArray(v)
 	case reflect.Chan:
-		return reflect.MakeChan(v.Type(), v.Cap())
+		return state.allocator.MakeChan(v.Type(), v.Cap())
 	case reflect.Interface:
 		return state.cloneInterface(v)
 	case reflect.Map:
@@ -92,13 +98,15 @@ func (state *cloneState) clone(v reflect.Value) reflect.Value {
 		return state.cloneSlice(v)
 	case reflect.Struct:
 		return state.cloneStruct(v)
+	case reflect.String:
+		return state.cloneString(v)
 	default:
 		panic(fmt.Errorf("go-clone: <bug> unsupported type `%v`", v.Type()))
 	}
 }
 
 func (state *cloneState) cloneArray(v reflect.Value) reflect.Value {
-	dst := reflect.New(v.Type())
+	dst := state.allocator.New(v.Type())
 	state.copyArray(v, dst)
 	return dst.Elem()
 }
@@ -135,7 +143,7 @@ func (state *cloneState) cloneMap(v reflect.Value) reflect.Value {
 
 	t := v.Type()
 
-	if state != nil {
+	if state.visited != nil {
 		vst := visit{
 			p: v.Pointer(),
 			t: t,
@@ -146,9 +154,9 @@ func (state *cloneState) cloneMap(v reflect.Value) reflect.Value {
 		}
 	}
 
-	nv := reflect.MakeMap(t)
+	nv := state.allocator.MakeMap(t, v.Len())
 
-	if state != nil {
+	if state.visited != nil {
 		vst := visit{
 			p: v.Pointer(),
 			t: t,
@@ -177,13 +185,13 @@ func (state *cloneState) clonePtr(v reflect.Value) reflect.Value {
 			return v
 		}
 
-		ptr := reflect.New(t)
+		ptr := state.allocator.New(t)
 		p := unsafe.Pointer(ptr.Pointer())
 		shadowCopy(v, p)
 		return ptr.Elem()
 	}
 
-	if state != nil {
+	if state.visited != nil {
 		vst := visit{
 			p: v.Pointer(),
 			t: t,
@@ -197,9 +205,9 @@ func (state *cloneState) clonePtr(v reflect.Value) reflect.Value {
 	src := v.Elem()
 	elemType := src.Type()
 	elemKind := src.Kind()
-	nv := reflect.New(elemType)
+	nv := state.allocator.New(elemType)
 
-	if state != nil {
+	if state.visited != nil {
 		vst := visit{
 			p: v.Pointer(),
 			t: t,
@@ -218,7 +226,7 @@ func (state *cloneState) clonePtr(v reflect.Value) reflect.Value {
 
 	// If this pointer is the address of a struct field and it's a cycle pointer,
 	// it may be updated.
-	if state != nil {
+	if state.visited != nil {
 		vst := visit{
 			p: v.Pointer(),
 			t: t,
@@ -237,7 +245,7 @@ func (state *cloneState) cloneSlice(v reflect.Value) reflect.Value {
 	t := v.Type()
 	num := v.Len()
 
-	if state != nil {
+	if state.visited != nil {
 		vst := visit{
 			p:     v.Pointer(),
 			extra: num,
@@ -250,9 +258,9 @@ func (state *cloneState) cloneSlice(v reflect.Value) reflect.Value {
 	}
 
 	c := v.Cap()
-	nv := reflect.MakeSlice(t, num, c)
+	nv := state.allocator.MakeSlice(t, num, c)
 
-	if state != nil {
+	if state.visited != nil {
 		vst := visit{
 			p:     v.Pointer(),
 			extra: num,
@@ -280,8 +288,29 @@ func (state *cloneState) cloneSlice(v reflect.Value) reflect.Value {
 
 func (state *cloneState) cloneStruct(v reflect.Value) reflect.Value {
 	t := v.Type()
-	nv := reflect.New(t)
+	nv := state.allocator.New(t)
 	state.copyStruct(v, nv)
+	return nv.Elem()
+}
+
+var typeOfByteSlice = reflect.TypeOf([]byte(nil))
+
+func (state *cloneState) cloneString(v reflect.Value) reflect.Value {
+	t := v.Type()
+	l := v.Len()
+	data := state.allocator.MakeSlice(typeOfByteSlice, l, l)
+
+	// The v is an unexported struct field.
+	if !v.CanInterface() {
+		v = reflect.ValueOf(v.String())
+	}
+
+	reflect.Copy(data, v)
+
+	nv := state.allocator.New(t)
+	slice := data.Interface().([]byte)
+	*(*stringHeader)(unsafe.Pointer(nv.Pointer())) = *(*stringHeader)(unsafe.Pointer(&slice))
+
 	return nv.Elem()
 }
 
@@ -290,7 +319,7 @@ func (state *cloneState) copyStruct(src, nv reflect.Value) {
 	st := loadStructType(t)
 	ptr := unsafe.Pointer(nv.Pointer())
 
-	st.Copy(src, nv)
+	st.Copy(state.allocator, src, nv)
 
 	// If the struct type is a scalar type, a.k.a type without any pointer,
 	// there is no need to iterate over fields.
@@ -307,7 +336,7 @@ func (state *cloneState) copyStruct(src, nv reflect.Value) {
 		// Put the pointer to this field to visited to avoid any error.
 		//
 		// See https://github.com/huandu/go-clone/issues/3.
-		if state != nil && field.CanAddr() {
+		if state.visited != nil && field.CanAddr() {
 			ft := field.Type()
 			fp := field.Addr().Pointer()
 			vst := visit{
@@ -453,18 +482,24 @@ func (state *cloneState) fix(v reflect.Value) {
 	}
 
 	fix := &fixState{
-		fixed:   fixMap{},
-		invalid: state.invalid,
+		allocator: state.allocator,
+		fixed:     fixMap{},
+		invalid:   state.invalid,
 	}
 	fix.fix(v)
 }
 
 type fixState struct {
-	fixed   fixMap
-	invalid invalidPointers
+	allocator *Allocator
+	fixed     fixMap
+	invalid   invalidPointers
 }
 
 type fixMap map[visit]struct{}
+
+func (fix *fixState) new(t reflect.Type) reflect.Value {
+	return fix.allocator.New(t)
+}
 
 func (fix *fixState) fix(v reflect.Value) (copied reflect.Value, changed int) {
 	if isScalar(v.Kind()) {
@@ -487,6 +522,9 @@ func (fix *fixState) fix(v reflect.Value) (copied reflect.Value, changed int) {
 		return fix.fixSlice(v)
 	case reflect.Struct:
 		return fix.fixStruct(v)
+	case reflect.String:
+		// Do nothing.
+		return
 	default:
 		panic(fmt.Errorf("go-clone: <bug> unsupported type `%v`", v.Type()))
 	}
@@ -516,7 +554,7 @@ func (fix *fixState) fixArray(v reflect.Value) (copied reflect.Value, changed in
 				// If elem cannot be set, v must be copied to make it settable.
 				// Don't do it unless there is no other choices.
 				if !elem.CanSet() {
-					copied = reflect.New(t).Elem()
+					copied = fix.new(t).Elem()
 					shadowCopy(v, unsafe.Pointer(copied.Addr().Pointer()))
 					_, changed = fix.fixArray(copied)
 					return
@@ -535,7 +573,7 @@ func (fix *fixState) fixArray(v reflect.Value) (copied reflect.Value, changed in
 			// If elem cannot be set, v must be copied to make it settable.
 			// Don't do it unless there is no other choices.
 			if !elem.CanSet() {
-				copied = reflect.New(t).Elem()
+				copied = fix.new(t).Elem()
 				shadowCopy(v, unsafe.Pointer(copied.Addr().Pointer()))
 				_, changed = fix.fixArray(copied)
 				return
@@ -798,7 +836,7 @@ func (fix *fixState) fixStruct(v reflect.Value) (copied reflect.Value, changed i
 				// If v is not addressable, a new struct must be allocated.
 				// Don't do it unless there is no other choices.
 				if !v.CanAddr() {
-					copied = reflect.New(t).Elem()
+					copied = fix.new(t).Elem()
 					shadowCopy(v, unsafe.Pointer(copied.Addr().Pointer()))
 					_, changed = fix.fixStruct(copied)
 					return
@@ -818,7 +856,7 @@ func (fix *fixState) fixStruct(v reflect.Value) (copied reflect.Value, changed i
 			// If v is not addressable, a new struct must be allocated.
 			// Don't do it unless there is no other choices.
 			if !v.CanAddr() {
-				copied = reflect.New(t).Elem()
+				copied = fix.new(t).Elem()
 				shadowCopy(v, unsafe.Pointer(copied.Addr().Pointer()))
 				_, changed = fix.fixStruct(copied)
 				return

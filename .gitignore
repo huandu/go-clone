@@ -34,3 +34,7 @@ debug_test
 
 # Mac
 .DS_Store
+
+# go workspace
+go.work
+go.work.sum

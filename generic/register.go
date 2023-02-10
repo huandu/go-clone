@@ -13,7 +13,7 @@ var registerAtomicPointerCalled int32
 
 // RegisterAtomicPointer registers a custom clone function for atomic.Pointer[T].
 func RegisterAtomicPointer[T any]() {
-	SetCustomFunc(reflect.TypeOf(atomic.Pointer[T]{}), func(old, new reflect.Value) {
+	SetCustomFunc(reflect.TypeOf(atomic.Pointer[T]{}), func(allocator *Allocator, old, new reflect.Value) {
 		if !old.CanAddr() {
 			return
 		}

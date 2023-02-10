@@ -12,7 +12,7 @@ import (
 )
 
 func init() {
-	SetCustomFunc(reflect.TypeOf(atomic.Bool{}), func(old, new reflect.Value) {
+	SetCustomFunc(reflect.TypeOf(atomic.Bool{}), func(allocator *Allocator, old, new reflect.Value) {
 		if !old.CanAddr() {
 			return
 		}
@@ -23,7 +23,7 @@ func init() {
 		v := oldValue.Load()
 		newValue.Store(v)
 	})
-	SetCustomFunc(reflect.TypeOf(atomic.Int32{}), func(old, new reflect.Value) {
+	SetCustomFunc(reflect.TypeOf(atomic.Int32{}), func(allocator *Allocator, old, new reflect.Value) {
 		if !old.CanAddr() {
 			return
 		}
@@ -34,7 +34,7 @@ func init() {
 		v := oldValue.Load()
 		newValue.Store(v)
 	})
-	SetCustomFunc(reflect.TypeOf(atomic.Int64{}), func(old, new reflect.Value) {
+	SetCustomFunc(reflect.TypeOf(atomic.Int64{}), func(allocator *Allocator, old, new reflect.Value) {
 		if !old.CanAddr() {
 			return
 		}
@@ -45,7 +45,7 @@ func init() {
 		v := oldValue.Load()
 		newValue.Store(v)
 	})
-	SetCustomFunc(reflect.TypeOf(atomic.Uint32{}), func(old, new reflect.Value) {
+	SetCustomFunc(reflect.TypeOf(atomic.Uint32{}), func(allocator *Allocator, old, new reflect.Value) {
 		if !old.CanAddr() {
 			return
 		}
@@ -56,7 +56,7 @@ func init() {
 		v := oldValue.Load()
 		newValue.Store(v)
 	})
-	SetCustomFunc(reflect.TypeOf(atomic.Uint64{}), func(old, new reflect.Value) {
+	SetCustomFunc(reflect.TypeOf(atomic.Uint64{}), func(allocator *Allocator, old, new reflect.Value) {
 		if !old.CanAddr() {
 			return
 		}
@@ -67,7 +67,7 @@ func init() {
 		v := oldValue.Load()
 		newValue.Store(v)
 	})
-	SetCustomFunc(reflect.TypeOf(atomic.Uintptr{}), func(old, new reflect.Value) {
+	SetCustomFunc(reflect.TypeOf(atomic.Uintptr{}), func(allocator *Allocator, old, new reflect.Value) {
 		if !old.CanAddr() {
 			return
 		}

@@ -9,3 +9,4 @@ import "reflect"
 // avoid to use these header types directly to silience golint.
 
 type sliceHeader reflect.SliceHeader
+type stringHeader reflect.StringHeader
