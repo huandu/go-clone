@@ -7,7 +7,7 @@
 
 Package `clone` provides functions to deep clone any Go data. It also provides a wrapper to protect a pointer from any unexpected mutation.
 
-For users who use Go 1.18+, it's recommended to import `github.com/huandu/go-clone/generic` for generic APIs.
+For users who use Go 1.18+, it's recommended to import `github.com/huandu/go-clone/generic` for generic APIs and arena support.
 
 `Clone`/`Slowly` can clone unexported fields and "no-copy" structs as well. Use this feature wisely.
 
@@ -84,6 +84,31 @@ println(cloned.Foo) // Output: bar
 It's required to update minimal Go version to 1.18 to opt-in generic syntax. It may not be a wise choice to update this package's `go.mod` and drop so many old Go compilers for such syntax candy. Therefore, I decide to create a new standalone package `github.com/huandu/go-clone/generic` to provide APIs with generic syntax.
 
 For new users who use Go 1.18+, the generic package is preferred and recommended.
+
+### Arena support
+
+Starting from Go1.20, arena is introduced as a new way to allocate memory. It's quite useful to improve overall performance in special scenarios.
+In order to clone a value with memory allocated from an arena, there are new methods `ArenaClone` and `ArenaCloneSlowly` available in `github.com/huandu/go-clone/generic`.
+
+```go
+// ArenaClone recursively deep clones v to a new value in arena a.
+// It works in the same way as Clone, except it allocates all memory from arena.
+func ArenaClone[T any](a *arena.Arena, v T) (nv T) 
+
+// ArenaCloneSlowly recursively deep clones v to a new value in arena a.
+// It works in the same way as Slowly, except it allocates all memory from arena.
+func ArenaCloneSlowly[T any](a *arena.Arena, v T) (nv T)
+```
+
+Due to limitations in arena API, memory of the internal data structure of `map` and `chan` is always allocated in heap by Go runtime ([see this issue](https://github.com/golang/go/issues/56230)).
+
+**Warning**: Per [discussion in the arena proposal](https://github.com/golang/go/issues/51317), the arena package may be changed incompatibly or removed in future. All arena related APIs in this package will be changed accordingly.
+
+### Customized allocator
+
+We can control how to allocate memory by creating an `Allocator`. It enables us to take full control over memory allocation when cloning. See [Allocator sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-Allocator) to understand how to use `sync.Pool` in allocator.
+
+For convenience, we can create dedicated allocators for heap or arena by calling `FromHeap()` or `FromArena(a arena.Arena)`.
 
 ### Mark struct type as scalar
 
