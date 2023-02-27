@@ -175,7 +175,8 @@ SetCustomFunc(reflect.TypeOf(MyType{}), func(allocator *Allocator, old, new refl
 })
 ```
 
-We can call `allocator.Clone` or `allocator.Slowly` to clone any value in depth. It's allowed to call these clone methods on `old` to clone its fields in depth.
+We can use `allocator` to clone any value or allocate new memory.
+It's allowed to call `allocator.Clone` or `allocator.CloneSlowly` on `old` to clone its struct fields in depth without worrying about dead loop.
 
 See [SetCustomFunc sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-SetCustomFunc) for more details.
 
