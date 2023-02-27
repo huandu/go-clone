@@ -102,6 +102,10 @@ func (a *Allocator) MakeChan(t reflect.Type, buffer int) reflect.Value {
 
 // Clone recursively deep clone val to a new value with memory allocated from a.
 func (a *Allocator) Clone(val reflect.Value) reflect.Value {
+	return a.clone(val, true)
+}
+
+func (a *Allocator) clone(val reflect.Value, inCustomFunc bool) reflect.Value {
 	if !val.IsValid() {
 		return val
 	}
@@ -109,12 +113,21 @@ func (a *Allocator) Clone(val reflect.Value) reflect.Value {
 	state := &cloneState{
 		allocator: a,
 	}
+
+	if inCustomFunc {
+		state.skipCustomFuncValue = val
+	}
+
 	return state.clone(val)
 }
 
 // CloneSlowly recursively deep clone val to a new value with memory allocated from a.
 // It marks all cloned values internally, thus it can clone v with cycle pointer.
 func (a *Allocator) CloneSlowly(val reflect.Value) reflect.Value {
+	return a.cloneSlowly(val, true)
+}
+
+func (a *Allocator) cloneSlowly(val reflect.Value, inCustomFunc bool) reflect.Value {
 	if !val.IsValid() {
 		return val
 	}
@@ -124,6 +137,11 @@ func (a *Allocator) CloneSlowly(val reflect.Value) reflect.Value {
 		visited:   visitMap{},
 		invalid:   invalidPointers{},
 	}
+
+	if inCustomFunc {
+		state.skipCustomFuncValue = val
+	}
+
 	cloned := state.clone(val)
 	state.fix(cloned)
 	return cloned

@@ -41,7 +41,7 @@ func clone(allocator *Allocator, v interface{}) interface{} {
 	}
 
 	val := reflect.ValueOf(v)
-	cloned := allocator.Clone(val)
+	cloned := allocator.clone(val, false)
 	return cloned.Interface()
 }
 
@@ -59,7 +59,7 @@ func cloneSlowly(allocator *Allocator, v interface{}) interface{} {
 	}
 
 	val := reflect.ValueOf(v)
-	cloned := allocator.CloneSlowly(val)
+	cloned := allocator.cloneSlowly(val, false)
 	return cloned.Interface()
 }
 
@@ -67,6 +67,10 @@ type cloneState struct {
 	allocator *Allocator
 	visited   visitMap
 	invalid   invalidPointers
+
+	// The value that should not be cloned by custom func.
+	// It's useful to avoid infinite loop when custom func calls allocator.Clone().
+	skipCustomFuncValue reflect.Value
 }
 
 type visit struct {
@@ -319,11 +323,7 @@ func (state *cloneState) copyStruct(src, nv reflect.Value) {
 	st := loadStructType(t)
 	ptr := unsafe.Pointer(nv.Pointer())
 
-	st.Copy(state.allocator, src, nv)
-
-	// If the struct type is a scalar type, a.k.a type without any pointer,
-	// there is no need to iterate over fields.
-	if len(st.PointerFields) == 0 {
+	if st.Init(state.allocator, src, nv, state.skipCustomFuncValue == src) {
 		return
 	}
 

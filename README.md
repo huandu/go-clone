@@ -166,7 +166,16 @@ I will update the default.
 ### Set custom clone functions
 
 If default clone strategy doesn't work for a struct type, we can call `SetCustomFunc` to register a custom clone function.
-`Clone` and `Slowly` can be used in custom clone functions.
+
+```go
+SetCustomFunc(reflect.TypeOf(MyType{}), func(allocator *Allocator, old, new reflect.Value) {
+    // Customized logic to copy the old to the new.
+    // The old's type is MyType.
+    // The new is a zero value of MyType and new.CanAddr() always returns true.
+})
+```
+
+We can call `allocator.Clone` or `allocator.Slowly` to clone any value in depth. It's allowed to call these clone methods on `old` to clone its fields in depth.
 
 See [SetCustomFunc sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-SetCustomFunc) for more details.
 

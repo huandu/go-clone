@@ -13,10 +13,23 @@ import (
 	"unsafe"
 )
 
+type structType struct {
+	PointerFields []structFieldType
+	fn            Func
+}
+
+type structFieldType struct {
+	Offset uintptr // The offset from the beginning of the struct.
+	Index  int     // The index of the field.
+}
+
 var (
-	cachedStructTypes  sync.Map
-	cachedPointerTypes sync.Map
+	cachedStructTypes     sync.Map
+	cachedPointerTypes    sync.Map
+	cachedCustomFuncTypes sync.Map
 )
+
+var zeroStructType = structType{}
 
 func init() {
 	// Some well-known scalar-like structs.
@@ -112,7 +125,7 @@ func MarkAsScalar(t reflect.Type) {
 		return
 	}
 
-	cachedStructTypes.Store(t, structType{})
+	cachedStructTypes.Store(t, zeroStructType)
 }
 
 // MarkAsOpaquePointer marks t as an opaque pointer so that all clone methods will copy t by value.
@@ -142,7 +155,14 @@ func emptyCloneFunc(allocator *Allocator, old, new reflect.Value) {}
 
 // SetCustomFunc sets a custom clone function for type t.
 // If t is not struct or pointer to struct, SetCustomFunc ignores t.
+//
+// If fn is nil, remove the custom clone function for type t.
 func SetCustomFunc(t reflect.Type, fn Func) {
+	if fn == nil {
+		cachedCustomFuncTypes.Delete(t)
+		return
+	}
+
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
@@ -151,36 +171,31 @@ func SetCustomFunc(t reflect.Type, fn Func) {
 		return
 	}
 
-	cachedStructTypes.Store(t, structType{
-		fn: fn,
-	})
+	cachedCustomFuncTypes.Store(t, fn)
 }
 
-type structType struct {
-	PointerFields []structFieldType
-	fn            Func
-}
-
-type structFieldType struct {
-	Offset uintptr // The offset from the beginning of the struct.
-	Index  int     // The index of the field.
-}
-
-// NewFrom creates a new value of src.Type() and shadow copies all content from src.
-func (st *structType) Copy(allocator *Allocator, src, nv reflect.Value) {
+// Init creates a new value of src.Type() and shadow copies all content from src.
+// If noCustomFunc is set to true, custom clone function will be ignored.
+//
+// Init returns true if the value is cloned by a custom func.
+// Caller should skip cloning struct fields in depth.
+func (st *structType) Init(allocator *Allocator, src, nv reflect.Value, noCustomFunc bool) (done bool) {
 	dst := nv.Elem()
 
-	if st.fn != nil {
+	if !noCustomFunc && st.fn != nil {
 		if !src.CanInterface() {
 			src = forceClearROFlag(src)
 		}
 
 		st.fn(allocator, src, dst)
+		done = true
 		return
 	}
 
 	ptr := unsafe.Pointer(nv.Pointer())
 	shadowCopy(src, ptr)
+	done = len(st.PointerFields) == 0
+	return
 }
 
 func (st *structType) CanShadowCopy() bool {
@@ -241,6 +256,11 @@ func loadStructType(t reflect.Type) (st structType) {
 	st = structType{
 		PointerFields: pointerFields,
 	}
+
+	if fn, ok := cachedCustomFuncTypes.Load(t); ok {
+		st.fn = fn.(Func)
+	}
+
 	cachedStructTypes.LoadOrStore(t, st)
 	return
 }

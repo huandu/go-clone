@@ -4,6 +4,7 @@
 package clone
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -87,4 +88,50 @@ func ExampleSetCustomFunc() {
 
 	// Output:
 	// [abc 123]
+}
+
+func ExampleSetCustomFunc_partiallyClone() {
+	type T struct {
+		Value int
+	}
+
+	type MyStruct struct {
+		S1 *T
+		S2 string
+		S3 int
+	}
+
+	SetCustomFunc(reflect.TypeOf(T{}), func(allocator *Allocator, old, new reflect.Value) {
+		oldField := old.FieldByName("Value")
+		newField := new.FieldByName("Value")
+		newField.SetInt(oldField.Int() + 100)
+	})
+
+	SetCustomFunc(reflect.TypeOf(MyStruct{}), func(allocator *Allocator, old, new reflect.Value) {
+		// We can call allocator.Clone to clone the old value without worrying about dead loop.
+		// This custom func is temporary disabled for the old value in allocator.
+		new.Set(allocator.Clone(old))
+
+		oldField := old.FieldByName("S2")
+		newField := new.FieldByName("S2")
+		newField.SetString(oldField.String() + "_suffix")
+	})
+
+	st := &MyStruct{
+		S1: &T{
+			Value: 1,
+		},
+		S2: "abc",
+		S3: 2,
+	}
+	cloned := Clone(st).(*MyStruct)
+
+	data, _ := json.Marshal(st)
+	fmt.Println(string(data))
+	data, _ = json.Marshal(cloned)
+	fmt.Println(string(data))
+
+	// Output:
+	// {"S1":{"Value":1},"S2":"abc","S3":2}
+	// {"S1":{"Value":101},"S2":"abc_suffix","S3":2}
 }
