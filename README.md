@@ -232,22 +232,18 @@ fmt.Println(w.Foo) // 123
 
 ## Performance
 
-Here is the performance data running on my MacBook Pro.
+Here is the performance data running on my dev machine.
 
 ```text
-MacBook Pro (15-inch, 2019)
-Processor: 2.6 GHz Intel Core i7
-
-go 1.19
+go 1.20.1
 goos: darwin
 goarch: amd64
-pkg: github.com/huandu/go-clone
 cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
-BenchmarkSimpleClone-12          7903873               142.9 ns/op            24 B/op          1 allocs/op
-BenchmarkComplexClone-12          590836                1755 ns/op          1488 B/op         21 allocs/op
-BenchmarkUnwrap-12              14988664               71.46 ns/op             0 B/op          0 allocs/op
-BenchmarkSimpleWrap-12           3823450               304.4 ns/op            72 B/op          2 allocs/op
-BenchmarkComplexWrap-12           867642                1197 ns/op           736 B/op         15 allocs/op
+BenchmarkSimpleClone-12       7164530        156.7 ns/op       24 B/op        1 allocs/op
+BenchmarkComplexClone-12       628056         1871 ns/op     1488 B/op       21 allocs/op
+BenchmarkUnwrap-12           15498139        78.02 ns/op        0 B/op        0 allocs/op
+BenchmarkSimpleWrap-12        3882360        309.7 ns/op       72 B/op        2 allocs/op
+BenchmarkComplexWrap-12        949654         1245 ns/op      736 B/op       15 allocs/op
 ```
 
 ## License
