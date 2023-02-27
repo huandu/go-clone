@@ -4,9 +4,7 @@ go 1.18
 
 require (
 	github.com/huandu/go-assert v1.1.5
-	github.com/huandu/go-clone v1.5.0
+	github.com/huandu/go-clone v1.5.1
 )
 
 require github.com/davecgh/go-spew v1.1.1 // indirect
-
-replace github.com/huandu/go-clone => ../
