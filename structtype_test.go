@@ -32,7 +32,7 @@ func TestMarkAsScalar(t *testing.T) {
 	a.Use(&oldCnt, &newCnt)
 
 	// Count cache.
-	heapAllocator.cachedStructTypes.Range(func(key, value interface{}) bool {
+	defaultAllocator.cachedStructTypes.Range(func(key, value interface{}) bool {
 		oldCnt++
 		return true
 	})
@@ -43,7 +43,7 @@ func TestMarkAsScalar(t *testing.T) {
 	MarkAsScalar(reflect.TypeOf(new(int))) // Should be ignored.
 
 	// Count cache against.
-	heapAllocator.cachedStructTypes.Range(func(key, value interface{}) bool {
+	defaultAllocator.cachedStructTypes.Range(func(key, value interface{}) bool {
 		newCnt++
 		return true
 	})

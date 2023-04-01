@@ -12,8 +12,8 @@ import (
 
 var typeOfAllocator = reflect.TypeOf(Allocator{})
 
-// The heapAllocator allocates memory from heap.
-var heapAllocator = FromHeap()
+// defaultAllocator is the default allocator and allocates memory from heap.
+var defaultAllocator = FromHeap()
 
 // Allocator is a utility type for memory allocation.
 type Allocator struct {

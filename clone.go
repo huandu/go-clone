@@ -12,7 +12,7 @@ import (
 )
 
 var heapCloneState = &cloneState{
-	allocator: heapAllocator,
+	allocator: defaultAllocator,
 }
 
 // Clone recursively deep clone v to a new value in heap.
@@ -32,7 +32,7 @@ var heapCloneState = &cloneState{
 // Unlike many other packages, Clone is able to clone unexported fields of any struct.
 // Use this feature wisely.
 func Clone(v interface{}) interface{} {
-	return clone(heapAllocator, v)
+	return clone(defaultAllocator, v)
 }
 
 func clone(allocator *Allocator, v interface{}) interface{} {
@@ -50,7 +50,7 @@ func clone(allocator *Allocator, v interface{}) interface{} {
 //
 // Slowly works exactly the same as Clone. See Clone doc for more details.
 func Slowly(v interface{}) interface{} {
-	return cloneSlowly(heapAllocator, v)
+	return cloneSlowly(defaultAllocator, v)
 }
 
 func cloneSlowly(allocator *Allocator, v interface{}) interface{} {

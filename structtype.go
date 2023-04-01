@@ -112,7 +112,7 @@ func init() {
 //   - time.Time
 //   - reflect.Value
 func MarkAsScalar(t reflect.Type) {
-	heapAllocator.MarkAsScalar(t)
+	defaultAllocator.MarkAsScalar(t)
 }
 
 // MarkAsOpaquePointer marks t as an opaque pointer in heap allocator,
@@ -123,7 +123,7 @@ func MarkAsScalar(t reflect.Type) {
 //   - `elliptic.Curve`, which is `*elliptic.CurveParam` or `elliptic.p256Curve`;
 //   - `reflect.Type`, which is `*reflect.rtype` defined in `runtime`.
 func MarkAsOpaquePointer(t reflect.Type) {
-	heapAllocator.MarkAsOpaquePointer(t)
+	defaultAllocator.MarkAsOpaquePointer(t)
 }
 
 // Func is a custom func to clone value from old to new.
@@ -142,7 +142,7 @@ func emptyCloneFunc(allocator *Allocator, old, new reflect.Value) {}
 //
 // If fn is nil, remove the custom clone function for type t.
 func SetCustomFunc(t reflect.Type, fn Func) {
-	heapAllocator.SetCustomFunc(t, fn)
+	defaultAllocator.SetCustomFunc(t, fn)
 }
 
 // Init creates a new value of src.Type() and shadow copies all content from src.
