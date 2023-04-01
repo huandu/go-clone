@@ -110,6 +110,8 @@ We can control how to allocate memory by creating an `Allocator`. It enables us 
 
 For convenience, we can create dedicated allocators for heap or arena by calling `FromHeap()` or `FromArena(a arena.Arena)`.
 
+There is a default heap allocator which holds all custom clone functions, scalar types and opaque types. Almost all public APIs in this package use this default allocator to do their job.
+
 ### Mark struct type as scalar
 
 Some struct types can be considered as scalar.

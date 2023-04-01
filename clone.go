@@ -83,7 +83,7 @@ type visitMap map[visit]reflect.Value
 type invalidPointers map[visit]reflect.Value
 
 func (state *cloneState) clone(v reflect.Value) reflect.Value {
-	if isScalar(v.Kind()) {
+	if state.allocator.isScalar(v.Kind()) {
 		return copyScalarValue(v)
 	}
 
@@ -120,7 +120,7 @@ func (state *cloneState) copyArray(src, nv reflect.Value) {
 	dst := nv.Elem()
 	num := src.Len()
 
-	if isScalar(src.Type().Elem().Kind()) {
+	if state.allocator.isScalar(src.Type().Elem().Kind()) {
 		shadowCopy(src, p)
 		return
 	}
@@ -184,7 +184,7 @@ func (state *cloneState) clonePtr(v reflect.Value) reflect.Value {
 
 	t := v.Type()
 
-	if isOpaquePointer(t) {
+	if state.allocator.isOpaquePointer(t) {
 		if v.CanInterface() {
 			return v
 		}
@@ -274,7 +274,7 @@ func (state *cloneState) cloneSlice(v reflect.Value) reflect.Value {
 	}
 
 	// For scalar slice, copy underlying values directly.
-	if isScalar(t.Elem().Kind()) {
+	if state.allocator.isScalar(t.Elem().Kind()) {
 		src := unsafe.Pointer(v.Pointer())
 		dst := unsafe.Pointer(nv.Pointer())
 		sz := int(t.Elem().Size())
@@ -320,7 +320,7 @@ func (state *cloneState) cloneString(v reflect.Value) reflect.Value {
 
 func (state *cloneState) copyStruct(src, nv reflect.Value) {
 	t := src.Type()
-	st := loadStructType(t)
+	st := state.allocator.loadStructType(t)
 	ptr := unsafe.Pointer(nv.Pointer())
 
 	if st.Init(state.allocator, src, nv, state.skipCustomFuncValue == src) {
@@ -502,7 +502,7 @@ func (fix *fixState) new(t reflect.Type) reflect.Value {
 }
 
 func (fix *fixState) fix(v reflect.Value) (copied reflect.Value, changed int) {
-	if isScalar(v.Kind()) {
+	if fix.allocator.isScalar(v.Kind()) {
 		return
 	}
 
@@ -535,7 +535,7 @@ func (fix *fixState) fixArray(v reflect.Value) (copied reflect.Value, changed in
 	et := t.Elem()
 	kind := et.Kind()
 
-	if isScalar(kind) {
+	if fix.allocator.isScalar(kind) {
 		return
 	}
 
@@ -639,7 +639,7 @@ func (fix *fixState) fixMap(v reflect.Value) (copied reflect.Value, changed int)
 	keyKind := kt.Kind()
 	elemKind := et.Kind()
 
-	if isScalar(keyKind) && isScalar(elemKind) {
+	if isScalar := fix.allocator.isScalar; isScalar(keyKind) && isScalar(elemKind) {
 		return
 	}
 
@@ -762,7 +762,7 @@ func (fix *fixState) fixSlice(v reflect.Value) (copied reflect.Value, changed in
 	et := t.Elem()
 	kind := et.Kind()
 
-	if isScalar(kind) {
+	if fix.allocator.isScalar(kind) {
 		return
 	}
 
@@ -814,7 +814,7 @@ func (fix *fixState) fixSlice(v reflect.Value) (copied reflect.Value, changed in
 
 func (fix *fixState) fixStruct(v reflect.Value) (copied reflect.Value, changed int) {
 	t := v.Type()
-	st := loadStructType(t)
+	st := fix.allocator.loadStructType(t)
 
 	if len(st.PointerFields) == 0 {
 		return

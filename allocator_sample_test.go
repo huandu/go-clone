@@ -1,6 +1,8 @@
 // Copyright 2023 Huan Du. All rights reserved.
 // Licensed under the MIT license that can be found in the LICENSE file.
 
+//go:build !goexperiment.arenas
+
 package clone
 
 import (
@@ -61,4 +63,30 @@ func ExampleAllocator() {
 	// Output:
 	// true
 	// 2
+}
+
+func ExampleAllocator_deepCloneString() {
+	// By default, string is considered as scalar and copied by value.
+	// In some cases, we may need to clone string deeply, that is, copy the underlying bytes.
+	// We can use a custom allocator to do this.
+	allocator := NewAllocator(nil, &AllocatorMethods{
+		IsScalar: func(t reflect.Kind) bool {
+			return t != reflect.String && IsScalar(t)
+		},
+	})
+
+	data := []byte("bytes")
+	s1 := *(*string)(unsafe.Pointer(&data))             // Unsafe conversion from []byte to string.
+	s2 := Clone(s1).(string)                            // s2 shares the same underlying bytes with s1.
+	s3 := allocator.Clone(reflect.ValueOf(s1)).String() // s3 has its own underlying bytes.
+
+	copy(data, "magic") // Change the underlying bytes.
+	fmt.Println(s1)
+	fmt.Println(s2)
+	fmt.Println(s3)
+
+	// Output:
+	// magic
+	// magic
+	// bytes
 }
