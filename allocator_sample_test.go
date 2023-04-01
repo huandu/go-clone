@@ -14,6 +14,31 @@ import (
 )
 
 func ExampleAllocator() {
+	// We can create a new allocator to hold customized config without poluting the default allocator.
+	// Calling FromHeap() is a convenient way to create a new allocator which allocates memory from heap.
+	allocator := FromHeap()
+
+	// Mark T as scalar only in the allocator.
+	type T struct {
+		Value *int
+	}
+	allocator.MarkAsScalar(reflect.TypeOf(new(T)))
+
+	t := &T{
+		Value: new(int),
+	}
+	cloned1 := allocator.Clone(reflect.ValueOf(t)).Interface().(*T)
+	cloned2 := Clone(t).(*T)
+
+	fmt.Println(t.Value == cloned1.Value)
+	fmt.Println(t.Value == cloned2.Value)
+
+	// Output:
+	// true
+	// false
+}
+
+func ExampleAllocator_syncPool() {
 	type Foo struct {
 		Bar int
 	}

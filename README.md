@@ -104,13 +104,13 @@ Due to limitations in arena API, memory of the internal data structure of `map` 
 
 **Warning**: Per [discussion in the arena proposal](https://github.com/golang/go/issues/51317), the arena package may be changed incompatibly or removed in future. All arena related APIs in this package will be changed accordingly.
 
-### Customized allocator
+### Memory allocations and the `Allocator`
 
-We can control how to allocate memory by creating an `Allocator`. It enables us to take full control over memory allocation when cloning. See [Allocator sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-Allocator) to understand how to use `sync.Pool` in allocator.
+The `Allocator` is designed to allocate memory when cloning. It's also used to hold all customizations, e.g. custom clone functions, scalar types and opaque pointers, etc. There is a default allocator which allocates memory from heap. Almost all public APIs in this package use this default allocator to do their job.
+
+We can control how to allocate memory by creating a new `Allocator` by `NewAllocator`. It enables us to take full control over memory allocation when cloning. See [Allocator sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-Allocator) to understand how to customize an allocator.
 
 For convenience, we can create dedicated allocators for heap or arena by calling `FromHeap()` or `FromArena(a arena.Arena)`.
-
-There is a default heap allocator which holds all custom clone functions, scalar types and opaque types. Almost all public APIs in this package use this default allocator to do their job.
 
 ### Mark struct type as scalar
 

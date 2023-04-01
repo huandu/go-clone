@@ -13,10 +13,18 @@ import (
 var typeOfAllocator = reflect.TypeOf(Allocator{})
 
 // defaultAllocator is the default allocator and allocates memory from heap.
-var defaultAllocator = FromHeap()
+var defaultAllocator = &Allocator{
+	new:       heapNew,
+	makeSlice: heapMakeSlice,
+	makeMap:   heapMakeMap,
+	makeChan:  heapMakeChan,
+	isScalar:  IsScalar,
+}
 
 // Allocator is a utility type for memory allocation.
 type Allocator struct {
+	parent *Allocator
+
 	pool      unsafe.Pointer
 	new       func(pool unsafe.Pointer, t reflect.Type) reflect.Value
 	makeSlice func(pool unsafe.Pointer, t reflect.Type, len, cap int) reflect.Value
@@ -27,16 +35,6 @@ type Allocator struct {
 	cachedStructTypes     sync.Map
 	cachedPointerTypes    sync.Map
 	cachedCustomFuncTypes sync.Map
-}
-
-// AllocatorMethods defines all methods required by allocator.
-// If any of these methods is nil, allocator will use default method which allocates memory from heap.
-type AllocatorMethods struct {
-	New       func(pool unsafe.Pointer, t reflect.Type) reflect.Value
-	MakeSlice func(pool unsafe.Pointer, t reflect.Type, len, cap int) reflect.Value
-	MakeMap   func(pool unsafe.Pointer, t reflect.Type, n int) reflect.Value
-	MakeChan  func(pool unsafe.Pointer, t reflect.Type, buffer int) reflect.Value
-	IsScalar  func(t reflect.Kind) bool
 }
 
 // FromHeap creates an allocator which allocate memory from heap.
@@ -52,68 +50,27 @@ func FromHeap() *Allocator {
 // The pool is a pointer to the memory pool which is opaque to the allocator.
 // It's methods's responsibility to allocate memory from the pool properly.
 func NewAllocator(pool unsafe.Pointer, methods *AllocatorMethods) (allocator *Allocator) {
-	if methods == nil {
-		allocator = &Allocator{
-			pool: pool,
+	parent := methods.parent()
+	new := methods.new(parent, pool)
 
-			cachedStructTypes:     sync.Map{},
-			cachedPointerTypes:    sync.Map{},
-			cachedCustomFuncTypes: sync.Map{},
-		}
-	} else if methods.New == nil {
-		allocator = &Allocator{
-			pool:      pool,
-			new:       methods.New,
-			makeSlice: methods.MakeSlice,
-			makeMap:   methods.MakeMap,
-			makeChan:  methods.MakeChan,
-			isScalar:  methods.IsScalar,
+	// Allocate the allocator from the pool.
+	val := new(pool, typeOfAllocator)
+	allocator = (*Allocator)(unsafe.Pointer(val.Pointer()))
+	runtime.KeepAlive(val)
 
-			cachedStructTypes:     sync.Map{},
-			cachedPointerTypes:    sync.Map{},
-			cachedCustomFuncTypes: sync.Map{},
-		}
-	} else {
-		// Allocate the allocator from the pool.
-		val := methods.New(pool, typeOfAllocator)
-		allocator = (*Allocator)(unsafe.Pointer(val.Pointer()))
-		runtime.KeepAlive(val)
+	allocator.pool = pool
+	allocator.new = new
+	allocator.makeSlice = methods.makeSlice(parent, pool)
+	allocator.makeMap = methods.makeMap(parent, pool)
+	allocator.makeChan = methods.makeChan(parent, pool)
+	allocator.isScalar = methods.isScalar(parent)
 
-		*allocator = Allocator{
-			pool:      pool,
-			new:       methods.New,
-			makeSlice: methods.MakeSlice,
-			makeMap:   methods.MakeMap,
-			makeChan:  methods.MakeChan,
-			isScalar:  methods.IsScalar,
-
-			cachedStructTypes:     sync.Map{},
-			cachedPointerTypes:    sync.Map{},
-			cachedCustomFuncTypes: sync.Map{},
-		}
+	if parent == nil {
+		parent = defaultAllocator
 	}
 
-	if allocator.new == nil {
-		allocator.new = heapNew
-	}
-
-	if allocator.makeSlice == nil {
-		allocator.makeSlice = heapMakeSlice
-	}
-
-	if allocator.makeMap == nil {
-		allocator.makeMap = heapMakeMap
-	}
-
-	if allocator.makeChan == nil {
-		allocator.makeChan = heapMakeChan
-	}
-
-	if allocator.isScalar == nil {
-		allocator.isScalar = IsScalar
-	}
-
-	return allocator
+	allocator.parent = parent
+	return
 }
 
 // New returns a new zero value of t.
@@ -184,14 +141,16 @@ func (a *Allocator) cloneSlowly(val reflect.Value, inCustomFunc bool) reflect.Va
 }
 
 func (a *Allocator) loadStructType(t reflect.Type) (st structType) {
-	if v, ok := a.cachedStructTypes.Load(t); ok {
-		st = v.(structType)
+	st, ok := a.lookupStructType(t)
+
+	if ok {
 		return
 	}
 
 	num := t.NumField()
 	pointerFields := make([]structFieldType, 0, num)
 
+	// Find pointer fields in depth-first order.
 	for i := 0; i < num; i++ {
 		field := t.Field(i)
 		ft := field.Type
@@ -238,16 +197,51 @@ func (a *Allocator) loadStructType(t reflect.Type) (st structType) {
 		PointerFields: pointerFields,
 	}
 
-	if fn, ok := a.cachedCustomFuncTypes.Load(t); ok {
-		st.fn = fn.(Func)
+	// Load custom function.
+	current := a
+
+	for current != nil {
+		if fn, ok := current.cachedCustomFuncTypes.Load(t); ok {
+			st.fn = fn.(Func)
+			break
+		}
+
+		current = current.parent
 	}
 
 	a.cachedStructTypes.LoadOrStore(t, st)
 	return
 }
 
+func (a *Allocator) lookupStructType(t reflect.Type) (st structType, ok bool) {
+	var v interface{}
+	current := a
+
+	for current != nil {
+		v, ok = current.cachedStructTypes.Load(t)
+
+		if ok {
+			st = v.(structType)
+			return
+		}
+
+		current = current.parent
+	}
+
+	return
+}
+
 func (a *Allocator) isOpaquePointer(t reflect.Type) (ok bool) {
-	_, ok = a.cachedPointerTypes.Load(t)
+	current := a
+
+	for current != nil {
+		if _, ok = current.cachedPointerTypes.Load(t); ok {
+			return
+		}
+
+		current = current.parent
+	}
+
 	return
 }
 
