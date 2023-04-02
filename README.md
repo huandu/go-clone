@@ -120,9 +120,12 @@ func NewAllocator(pool unsafe.Pointer, methods *AllocatorMethods) *Allocator
 - The second parameter `methods` is a pointer to a struct which contains all methods to allocate memory. It can be `nil` if we don't need to customize memory allocation.
 - The `Allocator` struct is allocated from the `methods.New` or the `methods.Parent` allocator or from heap.
 
-The `Parent` in `AllocatorMethods` is used to indicate the parent of the new allocator. With this feature, we can orgnize allocators into a tree structure and build a leveled memory pool. When allocating memory, the allocator will try to allocate memory from its own pool first. If the pool is full, it will try to allocate memory from its parent's pool. If the parent's pool is full, it will try to allocate memory from its parent's parent's pool. And so on. If the root allocator's pool is full, it will allocate memory from heap.
+The `Parent` in `AllocatorMethods` is used to indicate the parent of the new allocator. With this feature, we can orgnize allocators into a tree structure. All customizations, including custom clone functions, scalar types and opaque pointers, etc, are inherited from parent allocators.
 
-For convenience, we can create dedicated allocators for heap or arena by calling `FromHeap()` or `FromArena(a *arena.Arena)`.
+There are some APIs designed for convenience.
+
+- We can create dedicated allocators for heap or arena by calling `FromHeap()` or `FromArena(a *arena.Arena)`.
+- We can call `MakeCloner(allocator)` to create a helper struct with `Clone` and `CloneSlowly` methods in which the type of in and out parameters is `interface{}`.
 
 ### Mark struct type as scalar
 

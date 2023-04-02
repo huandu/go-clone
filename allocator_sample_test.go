@@ -99,11 +99,12 @@ func ExampleAllocator_deepCloneString() {
 			return t != reflect.String && IsScalar(t)
 		},
 	})
+	cloner := MakeCloner(allocator)
 
 	data := []byte("bytes")
-	s1 := *(*string)(unsafe.Pointer(&data))             // Unsafe conversion from []byte to string.
-	s2 := Clone(s1).(string)                            // s2 shares the same underlying bytes with s1.
-	s3 := allocator.Clone(reflect.ValueOf(s1)).String() // s3 has its own underlying bytes.
+	s1 := *(*string)(unsafe.Pointer(&data)) // Unsafe conversion from []byte to string.
+	s2 := Clone(s1).(string)                // s2 shares the same underlying bytes with s1.
+	s3 := cloner.Clone(s1).(string)         // s3 has its own underlying bytes.
 
 	copy(data, "magic") // Change the underlying bytes.
 	fmt.Println(s1)
