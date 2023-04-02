@@ -23,12 +23,6 @@ type structFieldType struct {
 	Index  int     // The index of the field.
 }
 
-var (
-	cachedStructTypes     sync.Map
-	cachedPointerTypes    sync.Map
-	cachedCustomFuncTypes sync.Map
-)
-
 var zeroStructType = structType{}
 
 func init() {
@@ -107,7 +101,8 @@ func init() {
 	})
 }
 
-// MarkAsScalar marks t as a scalar type so that all clone methods will copy t by value.
+// MarkAsScalar marks t as a scalar type in heap allocator,
+// so that all clone methods will copy t by value.
 // If t is not struct or pointer to struct, MarkAsScalar ignores t.
 //
 // In the most cases, it's not necessary to call it explicitly.
@@ -117,29 +112,18 @@ func init() {
 //   - time.Time
 //   - reflect.Value
 func MarkAsScalar(t reflect.Type) {
-	for t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-
-	if t.Kind() != reflect.Struct {
-		return
-	}
-
-	cachedStructTypes.Store(t, zeroStructType)
+	defaultAllocator.MarkAsScalar(t)
 }
 
-// MarkAsOpaquePointer marks t as an opaque pointer so that all clone methods will copy t by value.
+// MarkAsOpaquePointer marks t as an opaque pointer in heap allocator,
+// so that all clone methods will copy t by value.
 // If t is not a pointer, MarkAsOpaquePointer ignores t.
 //
 // Here is a list of types marked as opaque pointers by default:
 //   - `elliptic.Curve`, which is `*elliptic.CurveParam` or `elliptic.p256Curve`;
 //   - `reflect.Type`, which is `*reflect.rtype` defined in `runtime`.
 func MarkAsOpaquePointer(t reflect.Type) {
-	if t.Kind() != reflect.Ptr {
-		return
-	}
-
-	cachedPointerTypes.Store(t, struct{}{})
+	defaultAllocator.MarkAsOpaquePointer(t)
 }
 
 // Func is a custom func to clone value from old to new.
@@ -153,25 +137,12 @@ type Func func(allocator *Allocator, old, new reflect.Value)
 // It's useful when cloning sync.Mutex as cloned value must be a zero value.
 func emptyCloneFunc(allocator *Allocator, old, new reflect.Value) {}
 
-// SetCustomFunc sets a custom clone function for type t.
+// SetCustomFunc sets a custom clone function for type t in heap allocator.
 // If t is not struct or pointer to struct, SetCustomFunc ignores t.
 //
 // If fn is nil, remove the custom clone function for type t.
 func SetCustomFunc(t reflect.Type, fn Func) {
-	if fn == nil {
-		cachedCustomFuncTypes.Delete(t)
-		return
-	}
-
-	for t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-
-	if t.Kind() != reflect.Struct {
-		return
-	}
-
-	cachedCustomFuncTypes.Store(t, fn)
+	defaultAllocator.SetCustomFunc(t, fn)
 }
 
 // Init creates a new value of src.Type() and shadow copies all content from src.
@@ -202,70 +173,19 @@ func (st *structType) CanShadowCopy() bool {
 	return len(st.PointerFields) == 0 && st.fn == nil
 }
 
-func loadStructType(t reflect.Type) (st structType) {
-	if v, ok := cachedStructTypes.Load(t); ok {
-		st = v.(structType)
-		return
-	}
-
-	num := t.NumField()
-	pointerFields := make([]structFieldType, 0, num)
-
-	for i := 0; i < num; i++ {
-		field := t.Field(i)
-		ft := field.Type
-		k := ft.Kind()
-
-		if isScalar(k) {
-			continue
-		}
-
-		switch k {
-		case reflect.Array:
-			if ft.Len() == 0 {
-				continue
-			}
-
-			elem := ft.Elem()
-
-			if isScalar(elem.Kind()) {
-				continue
-			}
-
-			if elem.Kind() == reflect.Struct {
-				if fst := loadStructType(elem); fst.CanShadowCopy() {
-					continue
-				}
-			}
-		case reflect.Struct:
-			if fst := loadStructType(ft); fst.CanShadowCopy() {
-				continue
-			}
-		}
-
-		pointerFields = append(pointerFields, structFieldType{
-			Offset: field.Offset,
-			Index:  i,
-		})
-	}
-
-	if len(pointerFields) == 0 {
-		pointerFields = nil // Release memory ASAP.
-	}
-
-	st = structType{
-		PointerFields: pointerFields,
-	}
-
-	if fn, ok := cachedCustomFuncTypes.Load(t); ok {
-		st.fn = fn.(Func)
-	}
-
-	cachedStructTypes.LoadOrStore(t, st)
-	return
-}
-
-func isScalar(k reflect.Kind) bool {
+// IsScalar returns true if k should be considered as a scalar type.
+//
+// For the sake of performance, string is considered as a scalar type unless arena is enabled.
+// If we need to deep copy string value in some cases, we can create a new allocator with custom isScalar function
+// in which we can return false when k is reflect.String.
+//
+//	// Create a new allocator which treats string as non-scalar type.
+//	allocator := NewAllocator(nil, &AllocatorMethods{
+//		IsScalar: func(k reflect.Kind) bool {
+//			return k != reflect.String && IsScalar(k)
+//		},
+//	})
+func IsScalar(k reflect.Kind) bool {
 	switch k {
 	case reflect.Bool,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
@@ -284,11 +204,6 @@ func isScalar(k reflect.Kind) bool {
 	}
 
 	return false
-}
-
-func isOpaquePointer(t reflect.Type) (ok bool) {
-	_, ok = cachedPointerTypes.Load(t)
-	return
 }
 
 func copyScalarValue(src reflect.Value) reflect.Value {

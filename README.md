@@ -104,11 +104,28 @@ Due to limitations in arena API, memory of the internal data structure of `map` 
 
 **Warning**: Per [discussion in the arena proposal](https://github.com/golang/go/issues/51317), the arena package may be changed incompatibly or removed in future. All arena related APIs in this package will be changed accordingly.
 
-### Customized allocator
+### Memory allocations and the `Allocator`
 
-We can control how to allocate memory by creating an `Allocator`. It enables us to take full control over memory allocation when cloning. See [Allocator sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-Allocator) to understand how to use `sync.Pool` in allocator.
+The `Allocator` is designed to allocate memory when cloning. It's also used to hold all customizations, e.g. custom clone functions, scalar types and opaque pointers, etc. There is a default allocator which allocates memory from heap. Almost all public APIs in this package use this default allocator to do their job.
 
-For convenience, we can create dedicated allocators for heap or arena by calling `FromHeap()` or `FromArena(a arena.Arena)`.
+We can control how to allocate memory by creating a new `Allocator` by `NewAllocator`. It enables us to take full control over memory allocation when cloning. See [Allocator sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-Allocator) to understand how to customize an allocator.
+
+Let's take a closer look at the `NewAllocator` function.
+
+```go
+func NewAllocator(pool unsafe.Pointer, methods *AllocatorMethods) *Allocator
+```
+
+- The first parameter `pool` is a pointer to a memory pool. It's used to allocate memory for cloning. It can be `nil` if we don't need a memory pool.
+- The second parameter `methods` is a pointer to a struct which contains all methods to allocate memory. It can be `nil` if we don't need to customize memory allocation.
+- The `Allocator` struct is allocated from the `methods.New` or the `methods.Parent` allocator or from heap.
+
+The `Parent` in `AllocatorMethods` is used to indicate the parent of the new allocator. With this feature, we can orgnize allocators into a tree structure. All customizations, including custom clone functions, scalar types and opaque pointers, etc, are inherited from parent allocators.
+
+There are some APIs designed for convenience.
+
+- We can create dedicated allocators for heap or arena by calling `FromHeap()` or `FromArena(a *arena.Arena)`.
+- We can call `MakeCloner(allocator)` to create a helper struct with `Clone` and `CloneSlowly` methods in which the type of in and out parameters is `interface{}`.
 
 ### Mark struct type as scalar
 
