@@ -110,7 +110,19 @@ The `Allocator` is designed to allocate memory when cloning. It's also used to h
 
 We can control how to allocate memory by creating a new `Allocator` by `NewAllocator`. It enables us to take full control over memory allocation when cloning. See [Allocator sample code](https://pkg.go.dev/github.com/huandu/go-clone#example-Allocator) to understand how to customize an allocator.
 
-For convenience, we can create dedicated allocators for heap or arena by calling `FromHeap()` or `FromArena(a arena.Arena)`.
+Let's take a closer look at the `NewAllocator` function.
+
+```go
+func NewAllocator(pool unsafe.Pointer, methods *AllocatorMethods) *Allocator
+```
+
+- The first parameter `pool` is a pointer to a memory pool. It's used to allocate memory for cloning. It can be `nil` if we don't need a memory pool.
+- The second parameter `methods` is a pointer to a struct which contains all methods to allocate memory. It can be `nil` if we don't need to customize memory allocation.
+- The `Allocator` struct is allocated from the `methods.New` or the `methods.Parent` allocator or from heap.
+
+The `Parent` in `AllocatorMethods` is used to indicate the parent of the new allocator. With this feature, we can orgnize allocators into a tree structure and build a leveled memory pool. When allocating memory, the allocator will try to allocate memory from its own pool first. If the pool is full, it will try to allocate memory from its parent's pool. If the parent's pool is full, it will try to allocate memory from its parent's parent's pool. And so on. If the root allocator's pool is full, it will allocate memory from heap.
+
+For convenience, we can create dedicated allocators for heap or arena by calling `FromHeap()` or `FromArena(a *arena.Arena)`.
 
 ### Mark struct type as scalar
 
