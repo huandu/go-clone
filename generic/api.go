@@ -19,6 +19,7 @@ import (
 type Func = clone.Func
 type Allocator = clone.Allocator
 type AllocatorMethods = clone.AllocatorMethods
+type Cloner = clone.Cloner
 
 func Clone[T any](t T) T {
 	return clone.Clone(t).(T)
@@ -58,4 +59,12 @@ func FromHeap() *Allocator {
 
 func NewAllocator(pool unsafe.Pointer, methods *AllocatorMethods) (allocator *Allocator) {
 	return clone.NewAllocator(pool, methods)
+}
+
+func IsScalar(k reflect.Kind) bool {
+	return clone.IsScalar(k)
+}
+
+func MakeCloner(allocator *Allocator) Cloner {
+	return clone.MakeCloner(allocator)
 }
