@@ -16,6 +16,11 @@ var heapCloneState = &cloneState{
 }
 var cloner = MakeCloner(defaultAllocator)
 
+const zeroBytesCount = 256
+
+var zeroBytes [zeroBytesCount]byte
+var zero = zeroBytes[:]
+
 // Clone recursively deep clone v to a new value in heap.
 // It assumes that there is no pointer cycle in v,
 // e.g. v has a pointer points to v itself.
@@ -326,6 +331,19 @@ func (state *cloneState) copyStruct(src, nv reflect.Value) {
 
 	if st.Init(state.allocator, src, nv, state.skipCustomFuncValue == src) {
 		return
+	}
+
+	for _, pf := range st.ZeroFields {
+		p := unsafe.Pointer(uintptr(ptr) + pf.Offset)
+		sz := pf.Size
+
+		for sz > zeroBytesCount {
+			copy((*[zeroBytesCount]byte)(p)[:zeroBytesCount:zeroBytesCount], zero)
+			sz -= zeroBytesCount
+			p = unsafe.Pointer(uintptr(p) + zeroBytesCount)
+		}
+
+		copy((*[zeroBytesCount]byte)(p)[:sz:sz], zero)
 	}
 
 	for _, pf := range st.PointerFields {

@@ -14,8 +14,14 @@ import (
 )
 
 type structType struct {
+	ZeroFields    []structFieldSize
 	PointerFields []structFieldType
 	fn            Func
+}
+
+type structFieldSize struct {
+	Offset uintptr // The offset from the beginning of the struct.
+	Size   uintptr // The size of the field.
 }
 
 type structFieldType struct {

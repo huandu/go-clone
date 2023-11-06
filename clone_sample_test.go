@@ -3,7 +3,9 @@
 
 package clone
 
-import "fmt"
+import (
+	"fmt"
+)
 
 func ExampleSlowly() {
 	type ListNode struct {
@@ -42,4 +44,33 @@ func ExampleSlowly() {
 	// 2
 	// 3
 	// 1
+}
+
+func ExampleClone_tags() {
+	type T struct {
+		Normal *int
+		Foo    *int `clone:"skip"`       // Skip cloning this field so that Foo will be nil in cloned value.
+		Bar    *int `clone:"-"`          // "-" is an alias of skip.
+		Baz    *int `clone:"shadowcopy"` // Copy this field by value so that Baz will the same pointer as the original one.
+	}
+
+	a := 1
+	t := &T{
+		Normal: &a,
+		Foo:    &a,
+		Bar:    &a,
+		Baz:    &a,
+	}
+	v := Clone(t).(*T)
+
+	fmt.Println(v.Normal == t.Normal) // false
+	fmt.Println(v.Foo == nil)         // true
+	fmt.Println(v.Bar == nil)         // true
+	fmt.Println(v.Baz == t.Baz)       // true
+
+	// Output:
+	// false
+	// true
+	// true
+	// true
 }

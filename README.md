@@ -104,6 +104,33 @@ Due to limitations in arena API, memory of the internal data structure of `map` 
 
 **Warning**: Per [discussion in the arena proposal](https://github.com/golang/go/issues/51317), the arena package may be changed incompatibly or removed in future. All arena related APIs in this package will be changed accordingly.
 
+### Struct tags
+
+There are some struct tags to control how to clone a struct field.
+
+```go
+type T struct {
+    Normal *int
+    Foo    *int `clone:"skip"`       // Skip cloning this field so that Foo will be zero in cloned value.
+    Bar    *int `clone:"-"`          // "-" is an alias of skip.
+    Baz    *int `clone:"shadowcopy"` // Copy this field by shadow copy.
+}
+
+a := 1
+t := &T{
+    Normal: &a,
+    Foo:    &a,
+    Bar:    &a,
+    Baz:    &a,
+}
+v := clone.Clone(t).(*T)
+
+fmt.Println(v.Normal == t.Normal) // false
+fmt.Println(v.Foo == nil)         // true
+fmt.Println(v.Bar == nil)         // true
+fmt.Println(v.Baz == t.Baz)       // true
+```
+
 ### Memory allocations and the `Allocator`
 
 The `Allocator` is designed to allocate memory when cloning. It's also used to hold all customizations, e.g. custom clone functions, scalar types and opaque pointers, etc. There is a default allocator which allocates memory from heap. Almost all public APIs in this package use this default allocator to do their job.

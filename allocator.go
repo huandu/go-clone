@@ -10,6 +10,11 @@ import (
 	"unsafe"
 )
 
+const fieldTagName = "clone"
+const fieldTagValueSkip = "skip"
+const fieldTagValueSkipAlias = "-"
+const fieldTagValueShadowCopy = "shadowcopy"
+
 var typeOfAllocator = reflect.TypeOf(Allocator{})
 
 // defaultAllocator is the default allocator and allocates memory from heap.
@@ -148,6 +153,7 @@ func (a *Allocator) loadStructType(t reflect.Type) (st structType) {
 	}
 
 	num := t.NumField()
+	zeroFeilds := make([]structFieldSize, 0, num)
 	pointerFields := make([]structFieldType, 0, num)
 
 	// Find pointer fields in depth-first order.
@@ -155,8 +161,17 @@ func (a *Allocator) loadStructType(t reflect.Type) (st structType) {
 		field := t.Field(i)
 		ft := field.Type
 		k := ft.Kind()
+		tag := field.Tag.Get(fieldTagName)
 
-		if a.isScalar(k) {
+		if tag == fieldTagValueSkip || tag == fieldTagValueSkipAlias {
+			zeroFeilds = append(zeroFeilds, structFieldSize{
+				Offset: field.Offset,
+				Size:   uintptr(ft.Size()),
+			})
+			continue
+		}
+
+		if tag == fieldTagValueShadowCopy || a.isScalar(k) {
 			continue
 		}
 
@@ -189,12 +204,14 @@ func (a *Allocator) loadStructType(t reflect.Type) (st structType) {
 		})
 	}
 
-	if len(pointerFields) == 0 {
-		pointerFields = nil // Release memory ASAP.
+	st = structType{}
+
+	if len(zeroFeilds) != 0 {
+		st.ZeroFields = append(st.ZeroFields, zeroFeilds...)
 	}
 
-	st = structType{
-		PointerFields: pointerFields,
+	if len(pointerFields) != 0 {
+		st.PointerFields = append(st.PointerFields, pointerFields...)
 	}
 
 	// Load custom function.

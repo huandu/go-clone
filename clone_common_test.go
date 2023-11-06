@@ -26,6 +26,7 @@ var testFuncMap = map[string]func(t *testing.T, allocator *Allocator){
 	"Clone unexported fields":            testCloneUnexportedFields,
 	"Clone unexported struct method":     testCloneUnexportedStructMethod,
 	"Clone reflect type":                 testCloneReflectType,
+	"Clone with skip fields":             testCloneSkipFields,
 }
 
 type T struct {
@@ -666,4 +667,128 @@ func testCloneReflectType(t *testing.T, allocator *Allocator) {
 	to := reflect.ValueOf(cloned)
 
 	a.Assert(from.Pointer() == to.Pointer())
+}
+
+const testBytes = 332
+
+type skipFields struct {
+	Int               int
+	IntSkip           int `clone:"-"`
+	privateInt64      int64
+	privateUint64Skip uint64 `clone:"skip"`
+	str               string
+	StrSkip           string `clone:"-"`
+	privateStrSkip    string `clone:"-"`
+	float             float32
+	FloatSkip         float32 `clone:"-"`
+	privateFloatSkip  float64 `clone:"-"`
+	t                 *T
+	TSkip             *T `clone:"-"`
+	privateTSkip      *T `clone:"-"`
+	privateTShadow    *T `clone:"shadowcopy"`
+	privateTSlice     []*T
+	privateTSliceSkip []*T `clone:"-"`
+	bytes             [testBytes]byte
+	bytesSkip         [testBytes]byte `clone:"-"`
+}
+
+func testCloneSkipFields(t *testing.T, allocator *Allocator) {
+	a := assert.New(t)
+
+	from := &skipFields{
+		Int:               123,
+		IntSkip:           456,
+		privateInt64:      789,
+		privateUint64Skip: 987,
+		str:               "abc",
+		StrSkip:           "def",
+		privateStrSkip:    "ghi",
+		float:             3.2,
+		FloatSkip:         6.4,
+		privateFloatSkip:  9.6,
+		t: &T{
+			Foo: 123,
+			Bar: map[string]interface{}{
+				"abc": 123,
+			},
+		},
+		TSkip: &T{
+			Foo: 456,
+			Bar: map[string]interface{}{
+				"def": 456,
+				"ghi": 789,
+			},
+		},
+		privateTSkip: &T{
+			Foo: 789,
+			Bar: map[string]interface{}{
+				"jkl": 987,
+				"mno": 654,
+			},
+		},
+		privateTShadow: &T{
+			Foo: 321,
+			Bar: map[string]interface{}{
+				"pqr": 321,
+				"stu": 654,
+			},
+		},
+		privateTSlice: []*T{
+			{
+				Foo: 123,
+				Bar: map[string]interface{}{
+					"abc": 123,
+				},
+			},
+			{
+				Foo: 456,
+				Bar: map[string]interface{}{
+					"def": 456,
+					"ghi": 789,
+				},
+			},
+		},
+		privateTSliceSkip: []*T{
+			{
+				Foo: 789,
+				Bar: map[string]interface{}{
+					"jkl": 987,
+					"mno": 654,
+				},
+			},
+			{
+				Foo: 321,
+				Bar: map[string]interface{}{
+					"pqr": 321,
+					"stu": 654,
+				},
+			},
+		},
+	}
+
+	for i := 0; i < testBytes; i++ {
+		from.bytes[i] = byte(3 + (i % 128))
+		from.bytesSkip[i] = byte(3 + (i % 128))
+	}
+
+	to := clone(allocator, from).(*skipFields)
+
+	a.Equal(from.Int, to.Int)
+	a.Equal(to.IntSkip, int(0))
+	a.Equal(from.privateInt64, to.privateInt64)
+	a.Equal(to.privateUint64Skip, uint64(0))
+	a.Equal(from.str, to.str)
+	a.Equal(to.StrSkip, "")
+	a.Equal(to.privateStrSkip, "")
+	a.Equal(from.float, to.float)
+	a.Equal(to.FloatSkip, float32(0))
+	a.Equal(to.privateFloatSkip, float64(0))
+	a.Equal(from.t, to.t)
+	a.Equal(to.TSkip, (*T)(nil))
+	a.Equal(to.privateTSkip, (*T)(nil))
+	a.Assert(from.privateTShadow == to.privateTShadow)
+	a.Equal(from.privateTSlice, to.privateTSlice)
+	a.Equal(to.privateTSliceSkip, ([]*T)(nil))
+	a.Equal(from.bytes, to.bytes)
+	a.Equal(to.bytesSkip, [testBytes]byte{})
 }
