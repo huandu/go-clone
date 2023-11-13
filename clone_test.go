@@ -3,7 +3,11 @@
 
 package clone
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/huandu/go-assert"
+)
 
 func TestCloneAll(t *testing.T) {
 	for name, fn := range testFuncMap {
@@ -11,4 +15,26 @@ func TestCloneAll(t *testing.T) {
 			fn(t, defaultAllocator)
 		})
 	}
+}
+
+// TestIssue21 tests issue #21.
+func TestIssue21(t *testing.T) {
+	a := assert.New(t)
+
+	type Foo string
+	type Bar struct {
+		foo *Foo
+	}
+
+	foo := Foo("hello")
+
+	src := Bar{
+		foo: &foo,
+	}
+
+	dst := Clone(src).(Bar)
+
+	a.Equal(dst.foo, src.foo)
+	a.Assert(dst.foo != src.foo)
+	a.Equal(dst, src)
 }

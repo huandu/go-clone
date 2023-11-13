@@ -217,6 +217,11 @@ func copyScalarValue(src reflect.Value) reflect.Value {
 		return src
 	}
 
+	dst := newScalarValue(src)
+	return dst.Convert(src.Type())
+}
+
+func newScalarValue(src reflect.Value) reflect.Value {
 	// src is an unexported field value. Copy its value.
 	switch src.Kind() {
 	case reflect.Bool:

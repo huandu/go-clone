@@ -502,6 +502,8 @@ type Unexported struct {
 	insider
 }
 
+type myString string
+
 type insider struct {
 	i             int
 	i8            int8
@@ -520,6 +522,7 @@ type insider struct {
 	f64           float64
 	c64           complex64
 	c128          complex128
+	sptr          *myString
 	arr           [4]string
 	arrPtr        *[10]byte
 	ch            chan bool
@@ -545,6 +548,7 @@ func (scalarWriter) Write(p []byte) (n int, err error) { return }
 
 func testCloneUnexportedFields(t *testing.T, allocator *Allocator) {
 	a := assert.New(t)
+	var myStr myString = "myString"
 	unexported := &Unexported{
 		insider: insider{
 			i:    -1,
@@ -564,6 +568,7 @@ func testCloneUnexportedFields(t *testing.T, allocator *Allocator) {
 			f64:  6.4,
 			c64:  complex(6, 4),
 			c128: complex(12, 8),
+			sptr: &myStr,
 			arr: [4]string{
 				"a", "b", "c", "d",
 			},
