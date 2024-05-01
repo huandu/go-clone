@@ -151,6 +151,14 @@ func SetCustomFunc(t reflect.Type, fn Func) {
 	defaultAllocator.SetCustomFunc(t, fn)
 }
 
+// SetCustomPtrFunc sets a custom clone function for type t in heap allocator.
+// If t is not pointer to struct, SetCustomFunc ignores t.
+//
+// If fn is nil, remove the custom clone function for type t.
+func SetCustomPtrFunc(t reflect.Type, fn Func) {
+	defaultAllocator.SetCustomPtrFunc(t, fn)
+}
+
 // Init creates a new value of src.Type() and shadow copies all content from src.
 // If noCustomFunc is set to true, custom clone function will be ignored.
 //

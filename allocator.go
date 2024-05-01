@@ -318,6 +318,23 @@ func (a *Allocator) SetCustomFunc(t reflect.Type, fn Func) {
 	a.cachedCustomFuncTypes.Store(t, fn)
 }
 
+// SetCustomPtrFunc sets a custom clone function for type t.
+// If t is not pointer to struct, SetCustomFunc ignores t.
+//
+// If fn is nil, remove the custom clone function for type t.
+func (a *Allocator) SetCustomPtrFunc(t reflect.Type, fn Func) {
+        if fn == nil {
+                a.cachedCustomFuncTypes.Delete(t)
+                return
+        }
+
+        for t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Struct {
+		return
+        }
+
+        a.cachedCustomFuncTypes.Store(t, fn)
+}
+
 func heapNew(pool unsafe.Pointer, t reflect.Type) reflect.Value {
 	return reflect.New(t)
 }
