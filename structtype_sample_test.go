@@ -135,3 +135,51 @@ func ExampleSetCustomFunc_partiallyClone() {
 	// {"S1":{"Value":1},"S2":"abc","S3":2}
 	// {"S1":{"Value":101},"S2":"abc_suffix","S3":2}
 }
+
+func ExampleSetCustomFunc_conditionalClonePointer() {
+	type T struct {
+		shouldClone bool
+		data        []string
+	}
+
+	type Pointer struct {
+		*T
+	}
+
+	values := map[string]Pointer{
+		"shouldClone": {
+			T: &T{
+				shouldClone: true,
+				data:        []string{"a", "b", "c"},
+			},
+		},
+		"shouldNotClone": {
+			T: &T{
+				shouldClone: false,
+				data:        []string{"a", "b", "c"},
+			},
+		},
+	}
+	SetCustomFunc(reflect.TypeOf(Pointer{}), func(allocator *Allocator, old, new reflect.Value) {
+		p := old.Interface().(Pointer)
+
+		if p.shouldClone {
+			np := allocator.Clone(old).Interface().(Pointer)
+
+			// Update the cloned value to make the change very obvious.
+			np.shouldClone = false
+			np.data = append(np.data, "cloned")
+			new.Set(reflect.ValueOf(np))
+		} else {
+			new.Set(old)
+		}
+	})
+
+	cloned := Clone(values).(map[string]Pointer)
+	fmt.Println(cloned["shouldClone"].data)
+	fmt.Println(cloned["shouldNotClone"].data)
+
+	// Output:
+	// [a b c cloned]
+	// [a b c]
+}

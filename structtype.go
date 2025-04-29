@@ -101,9 +101,11 @@ func init() {
 		// Clone value inside atomic.Value.
 		oldValue := old.Addr().Interface().(*atomic.Value)
 		newValue := new.Addr().Interface().(*atomic.Value)
-		v := oldValue.Load()
-		cloned := clone(allocator, v)
-		newValue.Store(cloned)
+
+		if v := oldValue.Load(); v != nil {
+			cloned := clone(allocator, v)
+			newValue.Store(cloned)
+		}
 	})
 }
 

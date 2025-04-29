@@ -4,6 +4,7 @@
 package clone
 
 import (
+	"sync/atomic"
 	"testing"
 
 	"github.com/huandu/go-assert"
@@ -37,4 +38,12 @@ func TestIssue21(t *testing.T) {
 	a.Equal(dst.foo, src.foo)
 	a.Assert(dst.foo != src.foo)
 	a.Equal(dst, src)
+}
+
+// TestIssue25 tests issue #25.
+func TestIssue25(t *testing.T) {
+	a := assert.New(t)
+	cloned := Clone(new(atomic.Value)).(*atomic.Value)
+
+	a.Equal(cloned.Load(), nil)
 }
