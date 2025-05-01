@@ -90,6 +90,46 @@ func ExampleSetCustomFunc() {
 	// [abc 123]
 }
 
+// ExampleSetCustomPtrFunc tests whether we can customize the cloning behavior of a pointer type.
+// In this example, the custom function reuses cached values.
+func ExampleSetCustomPtrFunc() {
+	type Data struct {
+		Name  string
+	Value int
+	}
+	refs := make(map[string]*Data)
+	// Filter nil values in Data when cloning old value.
+	SetCustomPtrFunc(reflect.TypeOf(&Data{}), func(allocator *Allocator, old, new reflect.Value) {
+		// The new is a zero value of MyStruct.
+		// We can get its address to update it.
+		value := new.Addr().Interface().(**Data)
+		oldRole := old.Interface().(*Data)
+
+		if cached, ok := refs[(*oldRole).Name]; ok {
+			*value = cached
+		} else {
+			*value = &Data{
+				Name:  (*oldRole).Name,
+				Value: (*oldRole).Value,
+			}
+			refs[(*value).Name] = *value
+		}
+	})
+
+	orig := &Data{
+		Name:  "abc",
+		Value: 123,
+	}
+	cloned1 := Clone(orig).(*Data)
+	cloned2 := Clone(orig).(*Data)
+	cloned1.Value = 456
+	orig.Value = -1
+	fmt.Println(*orig, *cloned1, *cloned2)
+
+	// Output:
+	// {abc -1} {abc 456} {abc 456}
+}
+
 func ExampleSetCustomFunc_partiallyClone() {
 	type T struct {
 		Value int
