@@ -38,3 +38,6 @@ debug_test
 # go workspace
 go.work
 go.work.sum
+
+# Local module cache, used when the shared GOPATH cache is not writable.
+.gomodcache/
