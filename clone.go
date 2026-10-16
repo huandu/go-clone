@@ -190,6 +190,12 @@ func (state *cloneState) clonePtr(v reflect.Value) reflect.Value {
 
 	t := v.Type()
 
+	if fn, ok := state.allocator.cachedCustomFuncTypes.Load(t); ok {
+		nv := state.allocator.New(t)
+		fn.(Func)(state.allocator, v, nv.Elem())
+		return nv.Elem()
+	}
+
 	if state.allocator.isOpaquePointer(t) {
 		if v.CanInterface() {
 			return v
