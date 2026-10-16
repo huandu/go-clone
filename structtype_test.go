@@ -27,30 +27,78 @@ type WithPointer struct {
 
 func TestMarkAsScalar(t *testing.T) {
 	a := assert.New(t)
-	oldCnt := 0
-	newCnt := 0
-	a.Use(&oldCnt, &newCnt)
 
-	// Count cache.
-	defaultAllocator.cachedStructTypes.Range(func(key, value interface{}) bool {
-		oldCnt++
-		return true
-	})
+	typeOfNoPointer := reflect.TypeOf(new(NoPointer)).Elem()
+	typeOfWithPointer := reflect.TypeOf(new(WithPointer)).Elem()
+
+	// Seed the cache with a sentinel that cannot be mistaken for a real
+	// computation result, then assert MarkAsScalar overwrites it with
+	// zeroStructType.
+	//
+	// The previous version of this test compared the *number* of cached entries
+	// before and after the MarkAsScalar calls (`oldCnt+2 == newCnt`). Counting is
+	// not idempotent: MarkAsScalar writes to a process-wide cache, so from
+	// `go test -count=2` onward the entries already exist, the delta is 0, and the
+	// assertion failed even though the code was correct. Seeding a known sentinel
+	// and checking the resulting value is repeatable, and it still fails if
+	// MarkAsScalar stops writing.
+	//
+	// The sentinel is what gives the assertion its sensitivity. WithPointer's
+	// computed struct type is non-empty (it has pointer fields), but NoPointer's
+	// happens to be the empty shape that equals zeroStructType. Seeding makes both
+	// types start from a value that is definitely not the marker, so the check
+	// cannot pass by accident and does not depend on what an earlier test left in
+	// the cache.
+	sentinel := structType{
+		ZeroFields: []structFieldSize{{Offset: 0, Size: 8}},
+	}
+
+	sentinelFor := map[reflect.Type]structType{
+		typeOfNoPointer:   sentinel,
+		typeOfWithPointer: sentinel,
+	}
+
+	for typ := range sentinelFor {
+		defaultAllocator.cachedStructTypes.Store(typ, sentinel)
+	}
 
 	// Add 2 valid types.
-	MarkAsScalar(reflect.TypeOf(new(NoPointer)))
-	MarkAsScalar(reflect.TypeOf(new(WithPointer)))
-	MarkAsScalar(reflect.TypeOf(new(int))) // Should be ignored.
+	MarkAsScalar(typeOfNoPointer)
+	MarkAsScalar(typeOfWithPointer)
+	MarkAsScalar(reflect.TypeOf(new(int))) // Ignored: not a struct.
 
-	// Count cache against.
-	defaultAllocator.cachedStructTypes.Range(func(key, value interface{}) bool {
-		newCnt++
-		return true
-	})
+	for _, tc := range []struct {
+		name string
+		t    reflect.Type
+	}{
+		{"NoPointer", typeOfNoPointer},
+		{"WithPointer", typeOfWithPointer},
+	} {
+		st, ok := defaultAllocator.lookupStructType(tc.t)
 
-	a.Assert(oldCnt+2 == newCnt)
+		if !ok {
+			t.Errorf("MarkAsScalar(%s) did not record the type in cachedStructTypes", tc.name)
+			continue
+		}
+
+		if !reflect.DeepEqual(st, zeroStructType) {
+			t.Errorf("MarkAsScalar(%s) recorded %+v, want zeroStructType %+v", tc.name, st, zeroStructType)
+		}
+
+		// The seeded sentinel must be gone, proving MarkAsScalar wrote.
+		a.Assert(!reflect.DeepEqual(st, sentinelFor[tc.t]))
+	}
+
+	// A non-struct type must be ignored.
+	if _, ok := defaultAllocator.cachedStructTypes.Load(reflect.TypeOf(0)); ok {
+		t.Error("MarkAsScalar should ignore non-struct types such as int")
+	}
 
 	// As WithPointer is marked as scalar, Clone returns a shadow copy.
+	//
+	// This is the behavioral counterpart of the cache check above: WithPointer has
+	// pointer fields, so only a type actually marked as scalar is cloned flat
+	// instead of deep.
 	value := &WithPointer{
 		foo: map[string]string{
 			"key": "value",
