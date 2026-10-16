@@ -6,36 +6,105 @@ on:
   pull_request:
     branches: [master]
 
+env:
+  # Keep the log readable and make failures obvious.
+  GOFLAGS: -mod=mod
+  # Test with the toolchain the matrix pinned, instead of silently downloading
+  # whatever a `toolchain` directive in go.mod asks for.
+  GOTOOLCHAIN: local
+
 jobs:
-  build:
-    name: Build
+  test:
+    name: Test (go ${{ matrix.go }})
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # The root package supports very old toolchains, but its tests rely on
+        # `atomic.Pointer` (go1.19) and the generic submodule needs generics
+        # (go1.18), so 1.19 is the oldest release that can build this repository
+        # as a whole. The newest entry is the "latest Go" coverage: it is the
+        # toolchain that surfaces runtime/toolchain incompatibilities such as the
+        # checkptr violation that used to abort `-race` runs.
+        go:
+          - "1.19"
+          - "1.26.x"
+
     steps:
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go ${{ matrix.go }}
+        uses: actions/setup-go@v5
         with:
-          go-version: ^1.13
+          go-version: ${{ matrix.go }}
 
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
-
-      - name: Get dependencies
+      - name: Check formatting
         run: |
-          go mod download
-          go get
+          # Only check files tracked by git: gofmt accepts directories, and a
+          # module cache inside the work tree would otherwise be scanned too.
+          unformatted="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: |
+          go vet ./...
+          cd generic && go vet ./...
 
       - name: Test
-        run: go test -v -coverprofile=covprofile.cov ./...
-      
-      - name: Test generic
-        run: |
-          cd generic
-          go test -v ./...
-          cd ..
+        run: go test -race ./...
 
-      - name: Send coverage
-        env:
-          COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Test generic
+        run: cd generic && go test -race ./...
+
+  # go.mod handling differs between Go releases, so tidiness is checked on a
+  # single pinned toolchain instead of across the whole matrix. Marking it as a
+  # separate job keeps the matrix from reporting toolchain-version noise as a
+  # dependency problem.
+  tidy:
+    name: Tidy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
+      - name: Verify go.mod is tidy
         run: |
-          go get github.com/mattn/goveralls
-          go run github.com/mattn/goveralls -coverprofile=covprofile.cov -service=github
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          (cd generic && go mod tidy)
+          git diff --exit-code -- generic/go.mod generic/go.sum
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
+      - name: Test with coverage
+        run: go test -coverprofile=covprofile.cov ./...
+
+      - name: Upload coverage profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: covprofile.cov
+          if-no-files-found: error
