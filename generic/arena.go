@@ -99,5 +99,8 @@ func arenaMakeMap(pool unsafe.Pointer, t reflect.Type, n int) reflect.Value {
 func arenaMakeChan(pool unsafe.Pointer, t reflect.Type, buffer int) reflect.Value {
 	// As of go1.20, there is no way to allocate chan in arena.
 	// Fallback to heap allocation.
+	if t.ChanDir() != reflect.BothDir {
+		return reflect.MakeChan(reflect.ChanOf(reflect.BothDir, t.Elem()), buffer).Convert(t)
+	}
 	return reflect.MakeChan(t, buffer)
 }

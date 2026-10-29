@@ -331,5 +331,8 @@ func heapMakeMap(pool unsafe.Pointer, t reflect.Type, n int) reflect.Value {
 }
 
 func heapMakeChan(pool unsafe.Pointer, t reflect.Type, buffer int) reflect.Value {
+	if t.ChanDir() != reflect.BothDir {
+		return reflect.MakeChan(reflect.ChanOf(reflect.BothDir, t.Elem()), buffer).Convert(t)
+	}
 	return reflect.MakeChan(t, buffer)
 }
