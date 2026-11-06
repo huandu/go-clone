@@ -216,6 +216,9 @@ func (state *cloneState) clonePtr(v reflect.Value) reflect.Value {
 	elemType := src.Type()
 	elemKind := src.Kind()
 	nv := state.allocator.New(elemType)
+	if nv.Type() != t {
+		nv = nv.Convert(t)
+	}
 
 	if state.visited != nil {
 		vst := visit{
