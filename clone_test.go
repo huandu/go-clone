@@ -4,6 +4,7 @@
 package clone
 
 import (
+	"runtime"
 	"sync/atomic"
 	"testing"
 
@@ -74,5 +75,82 @@ func TestSlowlyDefinedPointerCycle(t *testing.T) {
 	dst, ok := got.(nodePtr)
 	if !ok || dst == nil || dst == src || dst.next != dst {
 		t.Fatalf("Slowly returned %T (%p), want a cloned %T pointing to itself", got, got, nodePtr(src))
+	}
+}
+
+func TestClonePrivateFieldsInMapValues(t *testing.T) {
+	type entry struct {
+		value  *int
+		alias  interface{}
+		labels []string
+	}
+	n := 42
+	src := map[int]entry{1: {value: &n, alias: &n, labels: []string{"first"}}}
+	dst := Slowly(src).(map[int]entry)[1]
+	if dst.value == &n || *dst.value != n || dst.alias != dst.value {
+		t.Fatal("private pointer and interface must refer to the same cloned value")
+	}
+	dst.labels[0] = "second"
+	if src[1].labels[0] != "first" {
+		t.Fatal("cloned slice shares its backing array with the source")
+	}
+}
+
+func TestSkipTagWithOnlyShallowFields(t *testing.T) {
+	type record struct {
+		shared  *int `clone:"shadowcopy"`
+		skipped *int `clone:"-"`
+	}
+	n := 42
+	src := struct{ entry record }{record{shared: &n, skipped: &n}}
+	dst := Slowly(src).(struct{ entry record })
+	if dst.entry.shared != &n || dst.entry.skipped != nil {
+		t.Fatalf("unexpected tagged fields after clone: %+v", dst.entry)
+	}
+}
+
+// TestCloneSurvivesGCWithPrivatePointers checks that pointers stored into
+// unexported fields retain their values and aliasing across a GC cycle.
+func TestCloneSurvivesGCWithPrivatePointers(t *testing.T) {
+	type node struct {
+		val  *int
+		tags map[string]*int
+	}
+	type holder struct {
+		nodes []node
+	}
+
+	const rounds = 200
+	var srcs []holder
+	for i := 0; i < 64; i++ {
+		v := i
+		srcs = append(srcs, holder{nodes: []node{{val: &v, tags: map[string]*int{"v": &v}}}})
+	}
+
+	const roundsPerGC = 20
+	retained := make([]holder, 0, roundsPerGC*len(srcs))
+	for r := 1; r <= rounds; r++ {
+		for _, src := range srcs {
+			retained = append(retained, Slowly(src).(holder))
+		}
+		if r%roundsPerGC != 0 && r != rounds {
+			continue
+		}
+
+		runtime.GC()
+		for j, got := range retained {
+			i := j % len(srcs)
+			n := got.nodes[0]
+			if n.val == nil || *n.val != i {
+				t.Fatalf("round %d, clone %d: lost value after GC", r, j)
+			}
+			if n.tags["v"] != n.val {
+				t.Fatalf("round %d, clone %d: lost internal alias after GC", r, j)
+			}
+			if n.val == srcs[i].nodes[0].val {
+				t.Fatalf("round %d, clone %d: shares pointer with source", r, j)
+			}
+		}
+		retained = retained[:0]
 	}
 }
