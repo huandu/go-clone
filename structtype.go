@@ -20,8 +20,10 @@ type structType struct {
 }
 
 type structFieldSize struct {
-	Offset uintptr // The offset from the beginning of the struct.
-	Size   uintptr // The size of the field.
+	Index       int
+	Offset      uintptr // The offset from the beginning of the struct.
+	Size        uintptr // The size of the field.
+	HasPointers bool    // Whether the field must be cleared by a typed store.
 }
 
 type structFieldType struct {
@@ -173,12 +175,12 @@ func (st *structType) Init(allocator *Allocator, src, nv reflect.Value, noCustom
 
 	ptr := unsafe.Pointer(nv.Pointer())
 	shadowCopy(src, ptr)
-	done = len(st.PointerFields) == 0
+	done = len(st.PointerFields) == 0 && len(st.ZeroFields) == 0
 	return
 }
 
 func (st *structType) CanShadowCopy() bool {
-	return len(st.PointerFields) == 0 && st.fn == nil
+	return len(st.PointerFields) == 0 && len(st.ZeroFields) == 0 && st.fn == nil
 }
 
 // IsScalar returns true if k should be considered as a scalar type.
@@ -297,10 +299,12 @@ func forceClearROFlag(v reflect.Value) reflect.Value {
 		indirect++
 	}
 
+	// Write the interface words straight into i. Taking &i only through
+	// unsafe.Pointer keeps i on the stack; reflect.ValueOf(&i) would move
+	// it to the heap and cost an extra allocation on every call.
 	v = v.Convert(typeOfInterface)
-	nv := reflect.ValueOf(&i)
-	*(*interfaceData)(unsafe.Pointer(nv.Pointer())) = parseReflectValue(v)
-	cleared := nv.Elem().Elem()
+	*(*interfaceData)(unsafe.Pointer(&i)) = parseReflectValue(v)
+	cleared := reflect.ValueOf(i)
 
 	for indirect > 0 {
 		cleared = cleared.Elem()

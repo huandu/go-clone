@@ -16,11 +16,6 @@ var heapCloneState = &cloneState{
 }
 var cloner = MakeCloner(defaultAllocator)
 
-const zeroBytesCount = 256
-
-var zeroBytes [zeroBytesCount]byte
-var zero = zeroBytes[:]
-
 // Clone recursively deep clone v to a new value in heap.
 // It assumes that there is no pointer cycle in v,
 // e.g. v has a pointer points to v itself.
@@ -283,13 +278,17 @@ func (state *cloneState) cloneSlice(v reflect.Value) reflect.Value {
 	}
 
 	// For scalar slice, copy underlying values directly.
-	if state.allocator.isScalar(t.Elem().Kind()) {
-		src := unsafe.Pointer(v.Pointer())
-		dst := unsafe.Pointer(nv.Pointer())
-		sz := int(t.Elem().Size())
-		l := num * sz
-		cc := c * sz
-		copy((*[maxByteSize]byte)(dst)[:l:cc], (*[maxByteSize]byte)(src)[:l:cc])
+	if et := t.Elem(); state.allocator.isScalar(et.Kind()) {
+		if hasPointers(et) {
+			// Elements like string, func or unsafe.Pointer need typed stores.
+			reflect.Copy(nv, readable(v))
+		} else {
+			// Plain data needs no write barrier. A raw copy also avoids
+			// the allocations readable makes for unexported slices.
+			dst := unsafe.Pointer(nv.Pointer())
+			src := unsafe.Pointer(v.Pointer())
+			copyBytes(dst, src, uintptr(num)*et.Size())
+		}
 	} else {
 		for i := 0; i < num; i++ {
 			nv.Index(i).Set(state.clone(v.Index(i)))
@@ -338,15 +337,15 @@ func (state *cloneState) copyStruct(src, nv reflect.Value) {
 
 	for _, pf := range st.ZeroFields {
 		p := unsafe.Pointer(uintptr(ptr) + pf.Offset)
-		sz := pf.Size
 
-		for sz > zeroBytesCount {
-			copy((*[zeroBytesCount]byte)(p)[:zeroBytesCount:zeroBytesCount], zero)
-			sz -= zeroBytesCount
-			p = unsafe.Pointer(uintptr(p) + zeroBytesCount)
+		// Without pointers there is no write barrier to run, so clear in place.
+		// This also avoids reflect.Zero, which allocates for fields over 1 KiB.
+		if !pf.HasPointers {
+			clearBytes(p, pf.Size)
+			continue
 		}
 
-		copy((*[zeroBytesCount]byte)(p)[:sz:sz], zero)
+		shadowCopy(reflect.Zero(nv.Elem().Field(pf.Index).Type()), p)
 	}
 
 	for _, pf := range st.PointerFields {
@@ -388,113 +387,19 @@ func (state *cloneState) copyStruct(src, nv reflect.Value) {
 	}
 }
 
-var typeOfString = reflect.TypeOf("")
+// readable exposes private fields for typed reflect stores.
+func readable(v reflect.Value) reflect.Value {
+	if v.CanInterface() {
+		return v
+	}
+	if v.CanAddr() {
+		return reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem()
+	}
+	return forceClearROFlag(v)
+}
 
 func shadowCopy(src reflect.Value, p unsafe.Pointer) {
-	switch src.Kind() {
-	case reflect.Bool:
-		*(*bool)(p) = src.Bool()
-	case reflect.Int:
-		*(*int)(p) = int(src.Int())
-	case reflect.Int8:
-		*(*int8)(p) = int8(src.Int())
-	case reflect.Int16:
-		*(*int16)(p) = int16(src.Int())
-	case reflect.Int32:
-		*(*int32)(p) = int32(src.Int())
-	case reflect.Int64:
-		*(*int64)(p) = src.Int()
-	case reflect.Uint:
-		*(*uint)(p) = uint(src.Uint())
-	case reflect.Uint8:
-		*(*uint8)(p) = uint8(src.Uint())
-	case reflect.Uint16:
-		*(*uint16)(p) = uint16(src.Uint())
-	case reflect.Uint32:
-		*(*uint32)(p) = uint32(src.Uint())
-	case reflect.Uint64:
-		*(*uint64)(p) = src.Uint()
-	case reflect.Uintptr:
-		*(*uintptr)(p) = uintptr(src.Uint())
-	case reflect.Float32:
-		*(*float32)(p) = float32(src.Float())
-	case reflect.Float64:
-		*(*float64)(p) = src.Float()
-	case reflect.Complex64:
-		*(*complex64)(p) = complex64(src.Complex())
-	case reflect.Complex128:
-		*(*complex128)(p) = src.Complex()
-
-	case reflect.Array:
-		t := src.Type()
-
-		if src.CanAddr() {
-			srcPtr := unsafe.Pointer(src.UnsafeAddr())
-			sz := t.Size()
-			copy((*[maxByteSize]byte)(p)[:sz:sz], (*[maxByteSize]byte)(srcPtr)[:sz:sz])
-			return
-		}
-
-		val := reflect.NewAt(t, p).Elem()
-
-		if src.CanInterface() {
-			val.Set(src)
-			return
-		}
-
-		sz := t.Elem().Size()
-		num := src.Len()
-
-		for i := 0; i < num; i++ {
-			elemPtr := unsafe.Pointer(uintptr(p) + uintptr(i)*sz)
-			shadowCopy(src.Index(i), elemPtr)
-		}
-	case reflect.Chan:
-		*((*uintptr)(p)) = src.Pointer()
-	case reflect.Func:
-		t := src.Type()
-		src = copyScalarValue(src)
-		val := reflect.NewAt(t, p).Elem()
-		val.Set(src)
-	case reflect.Interface:
-		*((*interfaceData)(p)) = parseReflectValue(src)
-	case reflect.Map:
-		*((*uintptr)(p)) = src.Pointer()
-	case reflect.Ptr:
-		*((*uintptr)(p)) = src.Pointer()
-	case reflect.Slice:
-		*(*sliceHeader)(p) = sliceHeader{
-			Data: src.Pointer(),
-			Len:  src.Len(),
-			Cap:  src.Cap(),
-		}
-	case reflect.String:
-		s := src.String()
-		val := reflect.NewAt(typeOfString, p).Elem()
-		val.SetString(s)
-	case reflect.Struct:
-		t := src.Type()
-		val := reflect.NewAt(t, p).Elem()
-
-		if src.CanInterface() {
-			val.Set(src)
-			return
-		}
-
-		num := t.NumField()
-
-		for i := 0; i < num; i++ {
-			field := t.Field(i)
-			fieldPtr := unsafe.Pointer(uintptr(p) + field.Offset)
-			shadowCopy(src.Field(i), fieldPtr)
-		}
-	case reflect.UnsafePointer:
-		// There is no way to copy unsafe.Pointer value.
-		*((*uintptr)(p)) = src.Pointer()
-
-	default:
-		panic(fmt.Errorf("go-clone: <bug> impossible type `%v` when cloning private field", src.Type()))
-	}
+	reflect.NewAt(src.Type(), p).Elem().Set(readable(src))
 }
 
 // fix tranverses v to update all pointer values in state.invalid.

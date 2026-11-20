@@ -3,10 +3,12 @@
 
 package clone
 
-import "reflect"
+import "unsafe"
 
-// As golint reports warning on possible misuse of these headers,
-// avoid to use these header types directly to silience golint.
-
-type sliceHeader reflect.SliceHeader
-type stringHeader reflect.StringHeader
+// stringHeader mirrors the runtime layout of a string.
+// Data is a pointer, not an uintptr, so assigning a stringHeader is a typed
+// store that runs the GC write barrier.
+type stringHeader struct {
+	Data unsafe.Pointer
+	Len  int
+}

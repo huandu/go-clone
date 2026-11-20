@@ -165,8 +165,10 @@ func (a *Allocator) loadStructType(t reflect.Type) (st structType) {
 
 		if tag == fieldTagValueSkip || tag == fieldTagValueSkipAlias {
 			zeroFeilds = append(zeroFeilds, structFieldSize{
-				Offset: field.Offset,
-				Size:   uintptr(ft.Size()),
+				Index:       i,
+				Offset:      field.Offset,
+				Size:        uintptr(ft.Size()),
+				HasPointers: hasPointers(ft),
 			})
 			continue
 		}
